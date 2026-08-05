@@ -1,0 +1,9 @@
+# 实测可用的版本（RTX 4060 Laptop 8GB / CUDA / Python 3.12）。
+# 装法见 README「环境」，注意 --user --break-system-packages。
+faster-whisper>=1.1.0
+ctranslate2>=4.5,<5
+opencc-python-reimplemented>=0.1.7
+numpy>=1.24
+
+# 测试用（不跑测试可以不装）
+pytest>=8.0
