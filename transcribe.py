@@ -196,48 +196,87 @@ def audit(data, loud, gap_min=3.0):
         if db == db and db > speech_db - 8:      # 音量接近讲话 = 有人在说，却没转出来
             spans.append([round(a, 1), round(b, 1), "VAD响空洞"])
 
-    # 幻觉：音量正常却转出字幕套语 = 真实语音被顶替，必须补回
-    hallu = []
+    # 幻觉分两类，处理方式相反——判据是音量，不是文本：
+    #   音量正常 => 真语音被顶替，内容丢了，要补转
+    #   音量偏低 => 那里本来就没内容，要剔除
+    hallu, drop = [], []
     for s in segs:
-        if HALLU_PAT.search(s["text"]):
-            db = loud.db(s["start"], s["end"])
+        by_word = bool(HALLU_PAT.search(s["text"]))
+        low_conf = s.get("avg_logprob", 0.0) < -1.0
+        span_len = s["end"] - s["start"]
+        # 说了半天没几个字：正常讲话约 3 字/秒，"嗯嗯嗯"占 28 秒只转出 3 个字。
+        starved = (low_conf and span_len > 5
+                   and len(s["text"].strip()) / max(span_len, 0.1) < 0.5)
+        if not (by_word or low_conf):
+            continue
+        db = loud.db(s["start"], s["end"])
+        if db != db:
+            continue
+        if starved:                          # 无论音量如何，这种段落没有内容可言
             hallu.append((s, db))
-            if db == db and db > speech_db - 8:
+            drop.append([round(s["start"], 1), round(s["end"], 1)])
+        elif db > speech_db - 8:
+            if by_word:                      # 低置信但音量正常，可能只是难识别，不算幻觉
+                hallu.append((s, db))
                 spans.append([round(s["start"], 1), round(s["end"], 1), "幻觉替换段"])
+        else:
+            hallu.append((s, db))
+            drop.append([round(s["start"], 1), round(s["end"], 1)])
 
     spans.sort()
     return {"duration": dur, "cover": cover, "cover_pct": 100 * cover / dur,
-            "speech_db": speech_db, "gaps": gaps, "spans": spans,
+            "speech_db": speech_db, "gaps": gaps, "spans": spans, "drop": drop,
             "hallu": [(s["start"], s["end"], s["text"], db) for s, db in hallu]}
 
 
-def find_break(data, loud, min_len=120):
-    """找中场休息：连续一段音量显著低于讲话，且转出的是幻觉/极少字。"""
+def find_break(data, loud, min_len=120, step=10):
+    """找中场休息。
+
+    判据必须是「音量低」**且**「转出的是幻觉或极少字」——只看音量会两头判偏：
+    实测有一版把休息段末尾多划了 47 秒，把"接下来我们开始互动的环节"整句删掉了。
+    步长取 10 秒而非 30 秒，边界才够准。
+    """
     dur = data["duration"]
-    step = 30
-    quiet = []
-    ref = None
+    segs = data["segments"]
+
     dbs = [(t, loud.db(t, t + step)) for t in range(0, int(dur), step)]
     vals = sorted(d for _, d in dbs if d == d)
     if not vals:
         return None
-    ref = vals[len(vals) * 3 // 4]          # 上四分位当讲话基准
+    ref = vals[len(vals) * 3 // 4]           # 上四分位当讲话基准
+
+    def spoken_chars(t0, t1):
+        """该窗口里的"真内容"字数——幻觉不算数。
+
+        光靠关键词表认不全：休息段还会冒出"鲍鱼""这间餐厅有很多不同的食物"
+        这类跟主题毫不相干的臆造。它们的共同客观特征是 avg_logprob 极低。"""
+        n = 0
+        for s in segs:
+            if not (t0 <= s["start"] < t1):
+                continue
+            if HALLU_PAT.search(s["text"]):
+                continue
+            if s.get("avg_logprob", 0.0) < -1.0:      # 低置信 = 大概率臆造
+                continue
+            n += len(s["text"].strip())
+        return n
+
+    flags = []
     for t, d in dbs:
-        if d == d and d < ref - 7:
-            quiet.append(t)
-    if not quiet:
-        return None
-    runs, cur = [], [quiet[0]]
-    for t in quiet[1:]:
-        if t - cur[-1] <= step * 1.5:
-            cur.append(t)
+        quiet = (d == d) and d < ref - 6
+        flags.append(quiet and spoken_chars(t, t + step) < 8)
+
+    best, cur = None, None
+    for i, f in enumerate(flags):
+        if f:
+            cur = (dbs[i][0], dbs[i][0] + step) if cur is None else (cur[0], dbs[i][0] + step)
+            if best is None or (cur[1] - cur[0]) > (best[1] - best[0]):
+                best = cur
         else:
-            runs.append(cur); cur = [t]
-    runs.append(cur)
-    best = max(runs, key=len)
-    if (best[-1] - best[0]) < min_len:
+            cur = None
+    if best is None or (best[1] - best[0]) < min_len:
         return None
-    return (best[0], best[-1] + step)
+    return best
 
 
 # ---------------------------------------------------------------- 补转
@@ -314,7 +353,7 @@ def merge_rows(rows):
     return out
 
 
-def combine(passes, patch, terms, break_span, dur):
+def combine(passes, patch, terms, break_span, dur, drop_spans=()):
     """逐 30 秒窗口在各路之间取字数多的，再用补转填两路都空的洞。"""
     import opencc
     cc = opencc.OpenCC("t2s")
@@ -331,6 +370,10 @@ def combine(passes, patch, terms, break_span, dur):
             return False
         if break_span and break_span[0] <= start <= break_span[1]:
             return False
+        # 落在休息段之外的零散幻觉（音量低+低置信），也要剔除
+        for a, b in drop_spans:
+            if a - 0.2 <= start <= b + 0.2:
+                return False
         return True
 
     prepped = []
@@ -502,7 +545,7 @@ def main():
         rep["spans"] = [s for s in rep["spans"] if not (brk[0] <= s[0] <= brk[1])]
 
     patch = repatch(wav, rep["spans"], os.path.join(work, "repatch.json"))
-    rows = combine(passes, patch, terms, brk, dur)
+    rows = combine(passes, patch, terms, brk, dur, rep.get("drop", []))
     per_pass = ", ".join(
         format(sum(len(s["text"]) for s in p["segments"]), ",") for p in passes)
     log(f"合并后 {len(rows)} 段 / {sum(len(r['text']) for r in rows):,} 字"
