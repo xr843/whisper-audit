@@ -5,6 +5,7 @@ Summary: 长音频转文档流水线，以不遗漏为目标，带覆盖率审�
 License: MIT
 Requires-Python: >=3.10
 Description-Content-Type: text/markdown
+License-File: LICENSE
 Requires-Dist: opencc-python-reimplemented>=0.1.7
 Requires-Dist: pypinyin>=0.53
 Requires-Dist: rapidfuzz>=3.9
@@ -16,8 +17,23 @@ Provides-Extra: funasr
 Requires-Dist: funasr>=1.1.0; extra == "funasr"
 Provides-Extra: dev
 Requires-Dist: pytest>=8.0; extra == "dev"
+Dynamic: license-file
 
 # audio-transcribe
+
+> **English summary.** A long-audio Chinese transcription pipeline built for
+> *completeness*, not for a single pass. Running Whisper once always drops
+> content — and worse, you never find out where. This pipeline cross-runs two
+> ASR passes, audits the timeline for gaps by measuring actual RMS loudness,
+> detects speech swallowed *inside* segments by character density, re-transcribes
+> only the problem spans, and scores character-level CER against a gold set you
+> build by fixing typos in its own output. Runs offline on a local GPU; audio
+> never leaves the machine.
+> The 「踩过的坑」 section below is the real value here — 16 findings, every one
+> measured on real recordings rather than reasoned from documentation.
+>
+> `pip install -e ".[whisper]"` then `audio-transcribe run recording.mp3`.
+> Docs are in Chinese; the code and CLI are not.
 
 长音频转文档流水线。目标是**不遗漏**，不是"转一遍"。
 
@@ -29,7 +45,7 @@ Requires-Dist: pytest>=8.0; extra == "dev"
 
 ```bash
 # 多人会议 / 口音重 / 内容重要 —— 双路交叉，最全（默认）
-python3 transcribe.py 录音.mp3 --profile meeting --terms terms/finance-lecture.json
+python3 transcribe.py 录音.mp3 --profile meeting --terms examples/terms/finance-lecture.json
 
 # 单人讲授、音质好 —— 单路 + 补转，快一半
 python3 transcribe.py 录音.mp3 --profile lecture
@@ -44,7 +60,7 @@ python3 transcribe.py 录音.mp3 --profile fast
 跑测试（不需要 GPU、不需要音频，几秒钟）：
 
 ```bash
-pip install -r requirements.txt
+pip install -e ".[dev]"      # 只装纯 CPU 的核心依赖，不装 ASR 后端
 python3 -m pytest tests/ -q
 ```
 
@@ -100,7 +116,7 @@ python3 -m pytest tests/ -q
 实际内容                     "上课的时间差不多到了，请外面的学员进场入座"
 ```
 
-术语引导要放到**事后的术语表**（`terms/*.json`），不要塞给模型。
+术语引导要放到**事后的术语表**（`examples/terms/*.json`），不要塞给模型。
 
 ### 2. ⚠️ VAD 会误杀真实语音，必须做覆盖率审计
 
@@ -145,7 +161,7 @@ Whisper 训练数据里有海量网络视频字幕，所以无声学证据时它
 两端都会判错。实测一版把终点多划了 47 秒，**把"接下来我们开始互动的环节"整句删掉了**；
 起点又划晚了，留下一堆"嗯嗯嗯"。
 
-正确做法（`find_break`）：判据是**音量低 且 该窗口真内容字数 < 8**（幻觉不计入字数），
+正确做法（`find_breaks`）：判据是**音量低 且 该窗口真内容字数 < 8**（幻觉不计入字数），
 步长取 10 秒。修好后边界精确到 `02:32:20–02:37:10`，前后干净衔接、关键句无损。
 
 **教训**：凡是"自动删掉一段内容"的逻辑，必须回头验证被删区间的边界，
@@ -310,24 +326,35 @@ pass1 报 97.3%，成品字幕的时间并集只有 90.0%——**给读者看的
 
 ## 术语表
 
-`terms/*.json`，格式：
+`examples/terms/*.json`，格式：
 
 ```json
 {
   "name": "领域名",
+  "terms": ["正确写法", ...],
   "fixes": [["误识写法", "正确写法"], ...],
   "clause_lead": ["那么", "所以说", ...]
 }
 ```
 
-**加新条目前务必先统计频次**，确认误识写法出现次数少、正确写法出现次数多，才能安全批量替换。
-本次实测 "大型" 268 次正确 vs "中教/中占" 3 次误识，替换安全。
+两种机制互补，**`fixes` 优先级更高**（它是人工逐条确认过的）：
+
+| 字段 | 机制 | 适用 |
+|---|---|---|
+| `fixes` | 字面精确替换 | 拼音对不上的错，如 `花票→发票`（hua≠fa） |
+| `terms` | 拼音模糊匹配，只列正确写法 | 同音/近音错，一条覆盖一整类，如 `厂所→场所` |
+
+**加 `fixes` 条目前务必先统计频次**，确认误识写法出现次数少、正确写法出现次数多，
+才能安全批量替换。本次实测 "大型" 268 次正确 vs "中教/中占" 3 次误识，替换安全。
+
+**`terms` 宁缺勿滥**——每多一条就多一次过度触发的机会。
 
 跑完一次之后，每条修正的命中数直接看 `质检报告.json` 的 `terms_hits`，
 日志也会报 0 命中的条目——**统计口径必须是替换前的原始文本**（见坑 14）。
 
 已有术语表：
-- `finance-lecture.json` — 财税讲座域（方言口音讲座），54 组（实测 42 条命中、12 条从未命中）
+- `examples/terms/finance-lecture.json` — 财税讲座域（方言口音讲座），
+  51 条 `fixes` + 22 条 `terms`。开源前已整理部分条目。
 
 ---
 
@@ -338,11 +365,28 @@ pass1 报 97.3%，成品字幕的时间并集只有 90.0%——**给读者看的
 换机器时：
 
 ```bash
-pip install --user --break-system-packages -r requirements.txt
+pip install --user --break-system-packages -e ".[whisper]"
 # 模型首次运行自动下载；网络慢的话直接拷贝 ~/.cache/huggingface/hub/models--Systran--faster-whisper-large-v3
 ```
 
+可选 extras：`[funasr]` 中文专用第二引擎、`[dev]` 只跑测试。
+核心依赖是纯 CPU 可装的（opencc / pypinyin / rapidfuzz / numpy），
+ASR 后端才需要 GPU——所以 `pip install -e ".[dev]"` 就能跑全部测试，CI 也是这么装的。
+
 没有 N 卡时 `--device cpu`（会自动退到 int8，很慢，只适合短音频验证流程）。
+
+### 代码结构
+
+```
+audio_transcribe/
+  cli.py         命令行与主流程          engines/   ASR 后端（whisper / funasr）
+  audio.py       转码 + 音量测量          audit.py   空洞 / 幻觉 / 段内饥饿 / 终审
+  merge.py       多路合并与去重           render.py  标点 / 分段 / 出稿 / 字幕重切
+  evaluate.py    字级 CER 与增删改分解
+```
+
+`transcribe.py` 是薄入口，`python3 transcribe.py 录音.mp3` 与装包后的
+`audio-transcribe run 录音.mp3` 等价。
 
 ---
 
