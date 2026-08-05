@@ -30,7 +30,7 @@ Task 5:  complete (commit a5e25c2, CI 夹具 6 条, 78 tests)
 Task 12: complete (commit e2b04f0) — 24.5x，两套脚本互印证
 Task 8:  FunASR 模型下载中（944MB，本机走代理约 1-2MB/s）
 
-Task 7:  complete (commit 722f549) — 拼音纠错接入，记账修了三处
+Task 7:  complete (commit 9ead3ee，722f549 是 amend 前的悬空对象) — 拼音纠错接入，记账修了三处
 Task 10: complete (commit 27650d3) — polish 拼音硬约束，agent 发现 brief 的示例字对并非同音
 Task 4/4b/5/6 审查：2 Critical + 4 Important，均已独立复现
   C1 pinyin_fix 危险是系统性的（节余/结余、空值/控制），**默认已改为关闭**

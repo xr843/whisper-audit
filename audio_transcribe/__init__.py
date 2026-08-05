@@ -1,6 +1,6 @@
 """长音频转录流水线 —— 以「不遗漏」为目标，而不是「转一遍」。
 
-    python3 transcribe.py 录音.mp3 -o 输出目录 --profile meeting --terms terms/xxx.json
+    python3 transcribe.py 录音.mp3 -o 输出目录 --profile meeting --terms examples/terms/xxx.json
 
 单跑一遍 Whisper 一定会漏。本流水线做四件单遍做不到的事：
   1. 双路转录（chunk=30 与 chunk=10），实测两路互补、各有各的漏，取并集

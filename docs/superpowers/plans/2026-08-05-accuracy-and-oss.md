@@ -12,7 +12,7 @@
 
 - 默认档速度退化不得超过 5%，基线 **24.5x**，下限 23.3x（bench15.wav，词级时间戳开）
   （15 分钟片段、int8_float16、batch 16、beam 5、**词级时间戳开启**）。
-  基线必须测流水线实际跑的配置——词级时间戳现在是默认开的，拿关闭时的 8.8x 卡门禁
+  基线必须测流水线实际跑的配置——词级时间戳现在是默认开的，拿关闭时的数字卡门禁
   等于在测一个不存在的配置
 - 核心依赖必须是纯 CPU 可安装的（opencc / pypinyin / rapidfuzz / numpy），ASR 后端走 optional-dependencies，否则 CI 装不动
 - `python3 transcribe.py 录音.mp3` 的行为必须保持不变
@@ -959,7 +959,7 @@ git commit -m "术语表：拼音级模糊纠错，只在同音/近音时替换�
 
 **Interfaces:**
 - Consumes: `terms.pinyin_fix`
-- Produces: 质检报告新增 `pinyin_fixes: list[dict]`；CLI 新增 `--no-pinyin-fix`
+- Produces: 质检报告新增 `pinyin_fixes: list[dict]`；CLI 新增 `--pinyin-fix`（**默认关**，实施时据实测结论反转了方向）
 
 - [ ] **Step 1: 写失败测试**
 
@@ -1048,13 +1048,13 @@ audio-transcribe eval --gold <金标>.gold.tsv --hyp <开启纠错的输出目�
 audio-transcribe eval --gold <金标>.gold.tsv --hyp <关闭纠错的输出目录>
 ```
 把两个 CER 与 `homo_pct` 记进 `docs/measurements.md`。
-**判定：CER 不劣化才允许默认开启；劣化则默认关闭并记录原因。**
+**判定（实施后修订）：默认关闭。** 不只看 CER——存在系统性误伤（节余/结余这类真实词被判同音）就必须默认关，哪怕 CER 略有改善。
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add -A
-git commit -m "接入拼音纠错：改动全量记账进质检报告，--no-pinyin-fix 可关"
+git commit -m "接入拼音纠错：改动全量记账进质检报告，--pinyin-fix 可关"
 ```
 
 ---

@@ -36,6 +36,20 @@ python3 transcribe.py 录音.mp3 --profile fast
 其他参数：`--model`（默认 large-v3）、`--device cuda|cpu`、`--compute`（覆盖档位量化）、
 `--language`（默认 zh）、`--keep-break`（不剔除休息段）、`--title`、`-o`。
 
+**两个会自动改正文的功能，默认都关着**，开之前请先读 [docs/measurements.md](docs/measurements.md)：
+
+| 参数 | 作用 | 为什么默认关 |
+|---|---|---|
+| `--pinyin-fix` | 拼音级术语纠错 | 无调拼音会把两个真实存在、含义不同的词判成同一个（节余/结余、空值/控制） |
+| `--loose-pinyin` | 上者再开近音归并 | 碰撞面更大 |
+| `--polish` | LLM 同音校订 | **正文会发往你指定的 endpoint**；受拼音硬约束，只放行同音替换 |
+
+`--polish` 配套：`--llm-base-url`（OpenAI 兼容）、`--llm-model`、`--polish-dry-run`
+（只打印将发送什么，不发请求）。API key 只从环境变量 `AUDIO_TRANSCRIBE_LLM_KEY` 读，
+不接受命令行参数——那会落进 shell 历史。
+
+三者**都没有 CER 证据说明净收益为正**，这是它们默认关闭的根本原因，不是成熟度问题。
+
 跑测试（不需要 GPU、不需要音频，几秒钟）：
 
 ```bash
@@ -316,9 +330,9 @@ pass1 报 97.3%，成品字幕的时间并集只有 90.0%——**给读者看的
 
 ### 14. ⚠️ 术语命中数要在替换**之前**统计
 
-`terms_hits()` 第一版拿最终正文去数，结果 54 条命中 1 条——
+`terms_hits()` 第一版拿最终正文去数，结果当时那张 54 条的表只命中 1 条——
 因为源词早就被替换光了。在原始（仅繁简转换后）文本上统计才有意义：
-实测 **54 条里 42 条命中、12 条从未命中**，那 12 条是白写的。
+实测 **51 条里 35 条命中、16 条从未命中**，那 12 条是白写的。
 这件事 README 过去教人手工做，现在每次跑完自动报。
 
 ### 15. 不要自动折叠「紧邻重复」
@@ -403,7 +417,7 @@ audio-transcribe eval --gold sample.gold.tsv --hyp 输出目录/
 
 已有术语表：
 - `examples/terms/finance-lecture.json` — 财税讲座域（方言口音讲座），
-  51 条 `fixes` + 22 条 `terms`。开源前已整理部分条目。
+  51 条 `fixes` + 44 条 `terms`。开源前已整理部分条目。
 
 ---
 
@@ -431,7 +445,8 @@ audio_transcribe/
   cli.py         命令行与主流程          engines/   ASR 后端（whisper / funasr）
   audio.py       转码 + 音量测量          audit.py   空洞 / 幻觉 / 段内饥饿 / 终审
   merge.py       多路合并与去重           render.py  标点 / 分段 / 出稿 / 字幕重切
-  evaluate.py    字级 CER 与增删改分解
+  evaluate.py    字级 CER 与增删改分解     goldset.py 待校对稿生成与评测入口
+  terms.py       术语表：字面 + 拼音       polish.py  LLM 同音校订（拼音硬约束）
 ```
 
 `transcribe.py` 是薄入口，`python3 transcribe.py 录音.mp3` 与装包后的
