@@ -109,3 +109,25 @@ def test_real_homophone_words_are_corrupted_when_enabled():
                      ("那条内部空值字段没有清理干净", "内部控制")):
         out, hits = pinyin_fix(src, terms)
         assert bad in out and hits, f"预期的已知缺陷未复现：{src} -> {out}"
+
+
+def test_hits_are_revalidated_against_the_final_text():
+    """记账必须按最终文本复核。
+
+    merge_rows 会用 strip_common 裁掉重复字块，被纠错的词可能正好在裁掉的那段。
+    实测两路高度重叠时，1 处真实改动曾记出 2 条，第二条指向一个压根没有该词的行——
+    审计人照着时间戳去回听会什么都找不到。
+    """
+    passes = [{"duration": 60.0, "segments": [
+        {"start": 0.0, "end": 10.0, "text": "才税管理的要点在这里说清楚了各位注意听讲",
+         "avg_logprob": -0.3, "no_speech_prob": 0.1},
+        {"start": 0.2, "end": 10.5,
+         "text": "才税管理的要点在这里说清楚了各位注意听讲另外补一句全新的话",
+         "avg_logprob": -0.3, "no_speech_prob": 0.1}]}]
+    rows, hits = M.combine(passes, [], TERMS, [], 60.0, pinyin=True, return_hits=True)
+    joined = "".join(r["text"] for r in rows)
+    assert len(hits) == joined.count("财税管理"), \
+        f"记账 {len(hits)} 条，成品里只有 {joined.count('财税管理')} 处：{hits}"
+    for h in hits:
+        assert "pos" not in h, "pos 是裁剪前的偏移，裁完就失效，留着比没有更误导"
+        assert "t" in h

@@ -146,10 +146,23 @@ def combine(passes, patch, terms, breaks, dur, drop_spans=(),
             picked.extend(best)
 
     rows = merge_rows(picked)
-    # 带上所在行的起始时间。行内偏移单独拿出来没有身份，无法回听定位——
-    # 「改动可追溯」要能落到音频上的一个时刻才算数。
-    hits = [{**h, "t": round(r["start"], 2)}
-            for r in rows for h in r.get("_pyhits", [])]
+
+    # 记账要按**最终文本**复核。行进了成品，不等于那处改动还在行里：
+    # merge_rows 会用 strip_common 裁掉重复字块，被纠错的词可能正好在裁掉的那段。
+    # 实测两路高度重叠时，1 处真实改动会记出 2 条，第二条指向一个
+    # 压根没有该词的行——审计人照着时间戳去回听，什么也找不到。
+    #
+    # 同时丢掉 pos：它是裁剪前的行内偏移，裁完就失效了，留着比没有更误导。
+    # 改带所在行的起始时间——「可追溯」要能落到音频上的一个时刻才算数。
+    hits = []
     for r in rows:
+        left = {}
+        for h in r.get("_pyhits", []):
+            cap = r["text"].count(h["to"])
+            used = left.get(h["to"], 0)
+            if used < cap:
+                left[h["to"]] = used + 1
+                hits.append({"from": h["from"], "to": h["to"],
+                             "t": round(r["start"], 2)})
         r.pop("_pyhits", None)
     return (rows, hits) if return_hits else rows

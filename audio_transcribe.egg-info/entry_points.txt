@@ -1,2 +1,0 @@
-[console_scripts]
-audio-transcribe = audio_transcribe.cli:main

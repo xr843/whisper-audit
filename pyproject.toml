@@ -27,4 +27,4 @@ dev = ["pytest>=8.0"]
 audio-transcribe = "audio_transcribe.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["audio_transcribe*"]
+include = ["audio_transcribe*", "bench*"]

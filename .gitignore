@@ -9,3 +9,8 @@ archive/
 
 __pycache__/
 *.pyc
+
+# 构建产物
+*.egg-info/
+build/
+dist/

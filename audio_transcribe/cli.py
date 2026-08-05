@@ -187,11 +187,22 @@ def run_polish(rows, terms, args):
     两道锁，缺一不可：
 
     1. `constrain` 逐字校验拼音——只放行同音替换，长度变了整块拒绝。
-       LLM 无法删内容、无法增内容、无法改事实。
     2. 行数校验——用换行拼接、返回后核对行数。`constrain` 只保长度不保结构，
        LLM 把两行并成一行、长度恰好不变的情况它看不出来，行数能。
 
-    校订之后再跑一遍拼音术语纠错兜底，覆盖 LLM 的任何反悔，代价接近零。
+    **这两道锁保证的是「不增、不删、不换位」，不保证「不改义」。**
+    中文里同音替换恰恰是改变含义最常见的方式，实测这些都能通过护栏：
+
+        账上还有一万元      → 亿万元    金额差一万倍
+        公司有权力处分      → 权利      法律含义相反
+        合同约定定金五万元  → 订金      可否退还相反
+        收到捐赠            → 受到
+
+    所以这一档的改动必须逐条核对，不能因为「有护栏」就当它安全。
+
+    校订之后的拼音纠错兜底**只在用户确实开了 --pinyin-fix 时才跑**——
+    它要覆盖的是「LLM 把已纠正的词改回去」，没开就没有可覆盖的对象，
+    硬跑等于替用户做了他没同意的改动。
     """
     import os as _os
 
@@ -208,6 +219,12 @@ def run_polish(rows, terms, args):
     fixed, rep = polish(joined, base_url=args.llm_base_url, model=args.llm_model,
                         api_key=key, dry_run=args.polish_dry_run)
 
+    if args.polish_dry_run:
+        # dry-run 承诺的是「只打印将要发送什么」。它**一个字都不能改**——
+        # 曾经这里无条件跑兜底纠错，把「节余」改成「结余」还不记账。
+        log(f"  {rep['chunks']} 块（dry-run，正文未改动）")
+        return rep, []
+
     parts = fixed.split("\n")
     if len(parts) == len(rows):
         for r, t in zip(rows, parts):
@@ -216,12 +233,17 @@ def run_polish(rows, terms, args):
         log(f"  ⚠ 返回 {len(parts)} 行 ≠ 原 {len(rows)} 行，结构被破坏，本次校订整体作废")
         rep["structure_rejected"] = True
 
-    for r in rows:                       # 兜底：覆盖 LLM 的任何反悔
-        r["text"], _ = pinyin_fix(r["text"], terms)
+    # 兜底只在用户确实开了拼音纠错时才有意义——它要「覆盖 LLM 的反悔」，
+    # 没开就根本没有可覆盖的东西，硬跑等于替用户做了他没同意的改动。
+    hits = []
+    if args.pinyin_fix:
+        for r in rows:
+            r["text"], h = pinyin_fix(r["text"], terms, loose=args.loose_pinyin)
+            hits.extend({**x, "t": round(r["start"], 2), "stage": "polish兜底"} for x in h)
 
     log(f"  {rep['chunks']} 块：接受 {rep['accepted']} 处、拒绝 {rep['rejected']} 处、"
         f"整块拒绝 {rep['length_rejected']} 块、请求失败 {rep['failed']} 块")
-    return rep
+    return rep, hits
 
 
 def cmd_run(args):
@@ -286,7 +308,10 @@ def cmd_run(args):
     if fin["starved"]:
         log("  ⚠ 仍有段落时长撑不起字数，补转没能捞回来，出稿前请对照 .srt 回听这些位置")
 
-    prep = run_polish(rows, terms, args) if (args.polish or args.polish_dry_run) else None
+    prep = None
+    if args.polish or args.polish_dry_run:
+        prep, polish_hits = run_polish(rows, terms, args)
+        pyhits = pyhits + polish_hits      # 兜底阶段的改动也要进同一本账
 
     if pyhits:
         from collections import Counter
@@ -320,8 +345,10 @@ def cmd_run(args):
                           "疑似仍有未转出的内容，请对照字幕回听。\n")
     if prep:
         meta_lines.append(
-            f"**LLM 同音校订**　已启用，接受 {prep['accepted']} 处、拒绝 {prep['rejected']} 处"
-            "（拒绝的是读音不同的改动，一律还原为原字）。\n")
+            f"**LLM 同音校订**　已启用，接受 {prep['accepted']} 处、拒绝 {prep['rejected']} 处。"
+            "护栏只允许同音替换（读音不同的改动一律还原），因此不会增删内容；"
+            "但**同音替换本身可能改变含义**（如 权力/权利、定金/订金、一/亿），"
+            "这一档的改动请对照质检报告逐条核对。\n")
     meta_lines.append("**注意**　语音识别对专有名词与专业术语存在同音误识，"
                       f"已按术语表统一校正可确定者（其中拼音级纠错 {len(pyhits)} 处，"
                       "逐条列在质检报告的 pinyin_fixes 里），不能确定者保留原样。"
