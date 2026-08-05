@@ -7,6 +7,12 @@
 基线测的是**流水线实际跑的配置**（词级时间戳开）。拿关闭时的数字卡门禁
 等于在测一个不存在的配置。
 
+⚠️ 跑之前先确认 GPU 是空的（nvidia-smi）。2026-08-05 有一次在 GPU 忙时测出
+8.4x 并写进了文档，真值是 24.5x —— 差了三倍。测的是排队情况，不是代码。
+
+⚠️ 这个倍数只用于**同一段音频的回归比较**。bench15.wav 是静音很多的照稿朗读片段，
+VAD 砍掉近半，倍数虚高；不要拿它预估语音密集的讲座录音要跑多久。
+
     python3 bench/throughput.py --wav bench/data/bench15.wav
 """
 import argparse
@@ -19,8 +25,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from audio_transcribe.audio import ensure_cuda_libs
 
-BASELINE = 8.4          # 15 分钟片段、int8_float16、batch16、beam5、词级时间戳开
-TOLERANCE = 0.05        # 退化不得超过 5% → 下限 7.98x
+BASELINE = 24.5        # bench15.wav（15 分钟照稿朗读片段）、int8_float16、batch16、beam5、词级时间戳开
+TOLERANCE = 0.05        # 退化不得超过 5% → 下限 23.3x
 
 
 def run_once(wav, words, model_name, compute, batch, beam):
