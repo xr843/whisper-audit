@@ -92,9 +92,12 @@ pinyin_fix("这一规定将大型活动场所的税务登记义务也纳入管�
 
 ### 判定
 
-**待定** —— 需要金标 CER 数字才能定默认开关。当前证据：
-能修真错（6 处 `所得税`），日常文本零误伤，但存在已知的跨词边界危险。
-倾向 `loose=False` 默认开、`loose=True` 需显式开启，待 CER 实测确认。
+**默认关闭**（`--pinyin-fix` 开启，`--loose-pinyin` 再开近音归并）。
+
+能修真错（6 处 `所得税`），但也会改坏真实词（节余/结余、空值/控制），
+而且**没有 CER 数字能说它净收益为正**。在拿到金标之前，默认开着就是拿正确文本赌。
+
+拿到金标后要重测的是同一个问题：开与不开，CER 哪个低。
 
 ---
 
@@ -220,7 +223,17 @@ Task 1 建立的 Engine 抽象已经就位，接入第二引擎只需实现一�
 
 ## 待补（欠 GPU）
 
-- Task 1 Step 7：拆包后的真机冒烟
-- Task 8：FunASR 输出格式探测与引擎验证
-- Task 12：吞吐基准复测
-- 拼音纠错 / 跨引擎 / LLM 校订三项的真实 CER 增量——**都需要先有金标**
+- Task 8：FunASR 输出格式探测与引擎验证（环境受阻，见上）
+- **拼音纠错 / 跨引擎 / LLM 校订三项的真实 CER 增量——都需要先有金标**
+
+已完成：Task 1 拆包后的真机冒烟（输出与拆包前逐项一致）、Task 12 吞吐基准（24.5x）。
+
+金标只能人工校对，而这个项目的招牌录音源音频已丢失，需要另选一份
+音频仍在的中文录音，10~15 分钟即可：
+
+```bash
+audio-transcribe run 录音.mp3 -o out --profile meeting
+audio-transcribe goldset out --from 00:05:00 --to 00:20:00 -o sample.gold.tsv
+# 打开 sample.gold.tsv 只改第三列的错字
+audio-transcribe eval --gold sample.gold.tsv --hyp out
+```
