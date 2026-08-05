@@ -10,7 +10,10 @@
 
 ## Global Constraints
 
-- 默认档（`lecture` / `meeting`）速度退化不得超过 5%，基线 8.8x 实时（15 分钟片段、int8_float16、batch 16、beam 5）
+- 默认档（`lecture` / `meeting`）速度退化不得超过 5%，基线 **8.4x 实时**，下限 7.98x
+  （15 分钟片段、int8_float16、batch 16、beam 5、**词级时间戳开启**）。
+  基线必须测流水线实际跑的配置——词级时间戳现在是默认开的，拿关闭时的 8.8x 卡门禁
+  等于在测一个不存在的配置
 - 核心依赖必须是纯 CPU 可安装的（opencc / pypinyin / rapidfuzz / numpy），ASR 后端走 optional-dependencies，否则 CI 装不动
 - `python3 transcribe.py 录音.mp3` 的行为必须保持不变
 - 现有 24 个测试全程保持通过，不允许为了让新代码过关而修改既有断言
@@ -156,19 +159,24 @@ if __name__ == "__main__":
     sys.exit(main())
 ```
 
-- [ ] **Step 5: 改测试的 import**
+- [ ] **Step 5: 改测试的 import 为直接模块引用**
 
-`tests/test_pipeline.py` 顶部把 `import transcribe as T` 换成一个聚合别名，保持全部 24 个测试断言原样不动：
+`tests/test_pipeline.py` 去掉 `import transcribe as T`，改成：
 
 ```python
-import types
-
 from audio_transcribe import audit, merge, render
-
-T = types.SimpleNamespace(
-    **{k: v for m in (audit, merge, render) for k, v in vars(m).items()
-       if not k.startswith("_")})
 ```
+
+再把测试体里的 `T.xxx` 逐个替换为它真正所属的模块：
+
+| 原引用 | 改为 |
+|---|---|
+| `T.starved_spans` / `T.audit` / `T.audit_rows` | `audit.xxx` |
+| `T.merge_rows` / `T.combine` / `T.strip_common` | `merge.xxx` |
+| `T.insert_clause_breaks` / `T.gap_thresholds` / `T.punctuate_row` / `T.resplit_rows` / `T.terms_hits` | `render.xxx` |
+
+**只改引用路径，断言表达式一个字都不许动。** 不要用 `types.SimpleNamespace` 之类的
+聚合别名把三个模块糊成一个 `T`——那是测试反模式，而且开源后别人读到会困惑。
 
 - [ ] **Step 6: 跑测试确认 24 个全过**
 
@@ -1508,8 +1516,8 @@ import time
 sys.path.insert(0, ".")
 from audio_transcribe.audio import ensure_cuda_libs
 
-BASELINE = 8.8          # 15 分钟片段、int8_float16、batch16、beam5、词级时间戳关
-TOLERANCE = 0.05        # 退化不得超过 5%
+BASELINE = 8.4          # 15 分钟片段、int8_float16、batch16、beam5、词级时间戳开
+TOLERANCE = 0.05        # 退化不得超过 5% → 下限 7.98x
 
 
 def run_once(wav, words):
@@ -1531,7 +1539,9 @@ def run_once(wav, words):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--wav", required=True)
-    ap.add_argument("--words", action="store_true", help="开词级时间戳")
+    # 默认开——基线必须测流水线实际跑的配置
+    ap.add_argument("--no-words", dest="words", action="store_false",
+                    default=True, help="关词级时间戳（只用于对比，不是默认档配置）")
     ap.add_argument("--runs", type=int, default=2)
     a = ap.parse_args()
     ensure_cuda_libs()
