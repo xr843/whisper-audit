@@ -54,9 +54,29 @@ def test_empty_argv_prints_help_instead_of_crashing():
     assert cli.main([]) == 1
 
 
-def test_every_declared_subcommand_is_registered():
-    """SUBCOMMANDS 漏登记会让子命令被当成音频文件名——静默且难查。"""
+def test_every_declared_subcommand_has_a_builder():
+    """SUBCOMMANDS 漏登记会让子命令被当成音频文件名——静默且难查。
+
+    必须拿 main() 真正用的 _BUILDERS 来比，不能在测试里另建一份注册表，
+    否则加了子命令后这条测试只会红在自己身上，抓不到真正的漂移。
+    """
+    assert set(cli.SUBCOMMANDS) == set(cli._BUILDERS)
+    assert set(cli.SUBCOMMANDS) == set(cli._HELP)
+
+
+def test_all_subcommands_parse_their_own_args():
     ap = argparse.ArgumentParser(prog="audio-transcribe")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    cli.add_run_args(sub.add_parser("run"))
-    assert set(cli.SUBCOMMANDS) == set(sub.choices)
+    for name in cli.SUBCOMMANDS:
+        cli._BUILDERS[name](sub.add_parser(name))
+    assert ap.parse_args(["goldset", "outdir", "-o", "g.tsv"]).out == "g.tsv"
+    assert ap.parse_args(["eval", "--gold", "g.tsv", "--hyp", "d"]).gold == "g.tsv"
+
+
+def test_subcommand_name_is_not_swallowed_as_audio_path():
+    """goldset/eval 必须被识别为子命令，而不是被当成音频文件名塞给 run。"""
+    for name in ("goldset", "eval"):
+        argv = [name]
+        if argv[0] not in cli.SUBCOMMANDS:
+            argv.insert(0, "run")
+        assert argv[0] == name

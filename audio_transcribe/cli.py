@@ -44,8 +44,28 @@ def add_run_args(ap):
     return ap
 
 
+def add_goldset_args(ap):
+    ap.add_argument("outdir", help="跑完的输出目录")
+    ap.add_argument("--from", dest="start", default=None,
+                    help="起点，00:10:00 / 10:00 / 600 均可")
+    ap.add_argument("--to", dest="end", default=None, help="终点，同上")
+    ap.add_argument("-o", "--out", required=True, help="待校对稿输出路径 .gold.tsv")
+    return ap
+
+
+def add_eval_args(ap):
+    ap.add_argument("--gold", required=True, help="人工校对过的 .gold.tsv")
+    ap.add_argument("--hyp", required=True, help="输出目录，或直接给 .srt 文件")
+    ap.add_argument("--json", default=None, help="把报告写成 json")
+    return ap
+
+
 # 已实现的子命令。加新子命令时必须同步这里，否则它会被当成音频文件名。
-SUBCOMMANDS = ("run",)
+SUBCOMMANDS = ("run", "goldset", "eval")
+
+_BUILDERS = {"run": add_run_args, "goldset": add_goldset_args, "eval": add_eval_args}
+_HELP = {"run": "转录音频", "goldset": "从输出里切一段生成待校对稿",
+         "eval": "拿校对好的金标算 CER"}
 
 
 def main(argv=None):
@@ -58,12 +78,41 @@ def main(argv=None):
     ap = argparse.ArgumentParser(prog="audio-transcribe",
                                  description="长音频转录流水线（以不遗漏为目标）")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    add_run_args(sub.add_parser("run", help="转录音频"))
+    for name in SUBCOMMANDS:
+        _BUILDERS[name](sub.add_parser(name, help=_HELP[name]))
     if not argv:
         ap.print_help()
         return 1
     args = ap.parse_args(argv)
-    return cmd_run(args)
+    return {"run": cmd_run, "goldset": cmd_goldset, "eval": cmd_eval}[args.cmd](args)
+
+
+def cmd_goldset(args):
+    from .goldset import find_srt, make_goldset, parse_hms, write_tsv
+    srt = args.outdir if args.outdir.endswith(".srt") else find_srt(args.outdir)
+    rows = make_goldset(srt, parse_hms(args.start), parse_hms(args.end))
+    if not rows:
+        log("时间窗内没有字幕，检查 --from/--to")
+        return 1
+    write_tsv(rows, args.out)
+    nchar = sum(len(t) for _, t in rows)
+    log(f"待校对稿 {args.out}：{len(rows)} 行 / {nchar:,} 字"
+        f"（{hms(rows[0][0])}–{hms(rows[-1][0])}）")
+    log("  现在打开它，**只改错字**——不要动时间戳、不要动格式、不要合并行。")
+    log(f"  改完跑：audio-transcribe eval --gold {args.out} --hyp {args.outdir}")
+    return 0
+
+
+def cmd_eval(args):
+    from .goldset import evaluate_srt, find_srt, format_report
+    srt = args.hyp if args.hyp.endswith(".srt") else find_srt(args.hyp)
+    rep = evaluate_srt(args.gold, srt)
+    print(format_report(rep))
+    if args.json:
+        json.dump(rep, open(args.json, "w", encoding="utf-8"),
+                  ensure_ascii=False, indent=1)
+        log(f"报告已写入 {args.json}")
+    return 0
 
 
 def cmd_run(args):
