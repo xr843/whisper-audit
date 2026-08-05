@@ -38,3 +38,15 @@ Task 4/4b/5/6 审查：2 Critical + 4 Important，均已独立复现
   I3 pinyin_fix 自身 loose 默认改 False
   I4/I5 账本与计划文档的旧速度数字已同步
   I6 eval --manifest CLI 待接
+
+## 2026-08-05 收尾
+Task 9:  complete (commit 95a09d6 + b9ac6e9) — 跨引擎测试 11 条；
+         点破 combine 是「逐桶二选一」不是并集，实测 naive 并集更差，保持现状但改口
+Task 11: complete (commit 59af6c6) — polish 接入；accurate 档故意未加
+文档一致性核查：11 处不一致全部处理 (commit b7ab7b8)
+  最险：随包分发的 terms JSON 还在写「零误伤」而代码已默认关闭该功能
+最终整支审查：进行中（7c2517e..b7ab7b8，25 commits）
+
+## 尚未完成，且不是代码问题
+金标 —— 三条提升路线的开关判定全部悬空。需要一份音频仍在的中文录音，
+人工校对 10~15 分钟。归档那份 3.65 小时讲座的源音频已丢失，无法回溯。
