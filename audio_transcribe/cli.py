@@ -27,6 +27,17 @@ PROFILES = {
              "compute": "int8_float16"},
 }
 
+# 计划里还有一个 accurate 档，**故意没有加**。
+#
+# 它本该是「双引擎 + 拼音纠错 + LLM 校订」，但眼下三样都不成立：
+#   - 中文专用第二引擎因环境问题装不上（见 docs/measurements.md）
+#   - 拼音纠错会改坏正确文本，且没有 CER 证据说它净收益为正
+#   - LLM 校订要把正文发出本机，这个决定不该由「选了哪个档位」隐含替用户做出
+#
+# 去掉这三样，accurate 就和 meeting 一模一样。加一个名字叫「高精度」、
+# 实则毫无差别的档位，比不加更糟——它会让人以为自己开了什么。
+# 等金标 CER 出来、能证明哪几样真有收益，再按数据组这个档。
+
 
 # ---------------------------------------------------------------- 主流程
 
@@ -48,6 +59,13 @@ def add_run_args(ap):
     ap.add_argument("--loose-pinyin", action="store_true",
                     help="拼音纠错启用近音归并（zh/z、ang/an…）。"
                          "能多修几处，但词边界误伤风险更高，默认关")
+    ap.add_argument("--polish", action="store_true",
+                    help="出稿前过一遍 LLM 同音校订。默认关；正文会发往你指定的 endpoint")
+    ap.add_argument("--polish-dry-run", action="store_true",
+                    help="只打印将要发送的内容与块数，不发任何请求")
+    ap.add_argument("--llm-base-url", default="https://api.openai.com/v1",
+                    help="OpenAI 兼容 endpoint")
+    ap.add_argument("--llm-model", default="gpt-4o-mini")
     return ap
 
 
@@ -163,7 +181,57 @@ def cmd_eval(args):
     return 0
 
 
+def run_polish(rows, terms, args):
+    """LLM 同音校订。逐行处理以保住时间戳与词级时间戳。
+
+    两道锁，缺一不可：
+
+    1. `constrain` 逐字校验拼音——只放行同音替换，长度变了整块拒绝。
+       LLM 无法删内容、无法增内容、无法改事实。
+    2. 行数校验——用换行拼接、返回后核对行数。`constrain` 只保长度不保结构，
+       LLM 把两行并成一行、长度恰好不变的情况它看不出来，行数能。
+
+    校订之后再跑一遍拼音术语纠错兜底，覆盖 LLM 的任何反悔，代价接近零。
+    """
+    import os as _os
+
+    from .polish import polish
+    from .terms import pinyin_fix
+
+    key = _os.environ.get("AUDIO_TRANSCRIBE_LLM_KEY", "")
+    if not key and not args.polish_dry_run:
+        raise SystemExit("需要环境变量 AUDIO_TRANSCRIBE_LLM_KEY（不要写进命令行，会落进 shell 历史）")
+
+    joined = "\n".join(r["text"] for r in rows)
+    log(f"LLM 同音校订：{len(rows)} 行 / {len(joined):,} 字 → {args.llm_base_url}"
+        + ("　[dry-run，不发请求]" if args.polish_dry_run else ""))
+    fixed, rep = polish(joined, base_url=args.llm_base_url, model=args.llm_model,
+                        api_key=key, dry_run=args.polish_dry_run)
+
+    parts = fixed.split("\n")
+    if len(parts) == len(rows):
+        for r, t in zip(rows, parts):
+            r["text"] = t
+    else:
+        log(f"  ⚠ 返回 {len(parts)} 行 ≠ 原 {len(rows)} 行，结构被破坏，本次校订整体作废")
+        rep["structure_rejected"] = True
+
+    for r in rows:                       # 兜底：覆盖 LLM 的任何反悔
+        r["text"], _ = pinyin_fix(r["text"], terms)
+
+    log(f"  {rep['chunks']} 块：接受 {rep['accepted']} 处、拒绝 {rep['rejected']} 处、"
+        f"整块拒绝 {rep['length_rejected']} 块、请求失败 {rep['failed']} 块")
+    return rep
+
+
 def cmd_run(args):
+    # 提前校验：真实录音要跑几十分钟，不能等转录全做完才告诉用户缺环境变量。
+    if args.polish and not args.polish_dry_run \
+            and not os.environ.get("AUDIO_TRANSCRIBE_LLM_KEY"):
+        log("--polish 需要环境变量 AUDIO_TRANSCRIBE_LLM_KEY"
+            "（不要写进命令行，会落进 shell 历史）")
+        return 2
+
     ensure_cuda_libs()
 
     src = os.path.abspath(args.audio)
@@ -203,8 +271,8 @@ def cmd_run(args):
     patch = repatch(wav, rep["spans"], os.path.join(work, "repatch.json"),
                     compute=compute, **mk)
     rows, pyhits = combine(passes, patch, terms, breaks, dur, rep.get("drop", []),
-                           pinyin=args.pinyin_fix, loose=args.loose_pinyin,
-                           return_hits=True)
+                           pinyin=args.pinyin_fix,
+                           loose=args.loose_pinyin, return_hits=True)
     per_pass = ", ".join(
         format(sum(len(s["text"]) for s in p["segments"]), ",") for p in passes)
     log(f"合并后 {len(rows)} 段 / {sum(len(r['text']) for r in rows):,} 字"
@@ -217,6 +285,8 @@ def cmd_run(args):
         f"残余饥饿段 {fin['starved']} 处")
     if fin["starved"]:
         log("  ⚠ 仍有段落时长撑不起字数，补转没能捞回来，出稿前请对照 .srt 回听这些位置")
+
+    prep = run_polish(rows, terms, args) if (args.polish or args.polish_dry_run) else None
 
     if pyhits:
         from collections import Counter
@@ -248,6 +318,10 @@ def cmd_run(args):
     if fin["starved"]:
         meta_lines.append(f"**待人工核对** {fin['starved']} 处段落时长与字数明显不匹配，"
                           "疑似仍有未转出的内容，请对照字幕回听。\n")
+    if prep:
+        meta_lines.append(
+            f"**LLM 同音校订**　已启用，接受 {prep['accepted']} 处、拒绝 {prep['rejected']} 处"
+            "（拒绝的是读音不同的改动，一律还原为原字）。\n")
     meta_lines.append("**注意**　语音识别对专有名词与专业术语存在同音误识，"
                       f"已按术语表统一校正可确定者（其中拼音级纠错 {len(pyhits)} 处，"
                       "逐条列在质检报告的 pinyin_fixes 里），不能确定者保留原样。"
@@ -257,6 +331,7 @@ def cmd_run(args):
 
     json.dump({"audit": {k: v for k, v in rep.items() if k != "hallu"},
                "final": fin, "terms_hits": hits, "pinyin_fixes": pyhits,
+               "polish": prep,
                "hallucinations": rep["hallu"], "breaks": breaks},
               open(os.path.join(outdir, "质检报告.json"), "w", encoding="utf-8"),
               ensure_ascii=False, indent=1)

@@ -96,3 +96,23 @@ def test_eval_accepts_manifest_form():
     a = ap.parse_args(["eval", "--manifest", "bench/aishell_test.jsonl"])
     assert a.manifest == "bench/aishell_test.jsonl"
     assert a.gold is None and a.hyp is None
+
+
+def test_polish_without_key_fails_before_transcribing(monkeypatch, tmp_path):
+    """真实录音要跑几十分钟，缺环境变量必须在开跑前就报，不能等转完才说。"""
+    monkeypatch.delenv("AUDIO_TRANSCRIBE_LLM_KEY", raising=False)
+    audio = tmp_path / "x.wav"
+    audio.write_bytes(b"not really audio")
+    assert cli.main(["run", str(audio), "--polish"]) == 2
+    assert not (tmp_path / "x_转录").exists(), "报错前不该建输出目录"
+
+
+def test_polish_dry_run_does_not_need_a_key(monkeypatch):
+    """dry-run 不发请求，不该要 key。"""
+    monkeypatch.delenv("AUDIO_TRANSCRIBE_LLM_KEY", raising=False)
+    ap = argparse.ArgumentParser(prog="audio-transcribe")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    for name in cli.SUBCOMMANDS:
+        cli._BUILDERS[name](sub.add_parser(name))
+    a = ap.parse_args(["run", "x.wav", "--polish-dry-run"])
+    assert a.polish_dry_run and not a.polish
