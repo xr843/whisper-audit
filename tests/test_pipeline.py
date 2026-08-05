@@ -12,7 +12,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import transcribe as T
+from audio_transcribe import audit, merge, render
 
 
 def seg(start, end, text, logprob=-0.3, words=None):
@@ -41,7 +41,7 @@ def test_starved_segment_is_detected_even_with_high_confidence():
     于是这 296 秒被算作「已覆盖」，1000 字左右的内容凭空消失且无人知晓。
     """
     segs = [seg(1575.0, 1871.0, "你" * 128, logprob=-0.28)]
-    spans = T.starved_spans(segs)
+    spans = audit.starved_spans(segs)
     assert spans, "高置信度的饥饿段必须被检出"
     assert min(a for a, _, _ in spans) <= 1580
     assert max(b for _, b, _ in spans) >= 1866
@@ -50,7 +50,7 @@ def test_starved_segment_is_detected_even_with_high_confidence():
 def test_starved_span_is_chopped_for_repatch():
     """整段 296 秒丢给补转会退化成一次全量重跑，必须切块。"""
     segs = [seg(1575.0, 1871.0, "你" * 128, logprob=-0.28)]
-    spans = T.starved_spans(segs, max_span=90.0)
+    spans = audit.starved_spans(segs, max_span=90.0)
     assert len(spans) >= 3
     assert all(b - a <= 90.0 + 1e-6 for a, b, _ in spans)
 
@@ -58,13 +58,13 @@ def test_starved_span_is_chopped_for_repatch():
 def test_normal_speech_is_not_starved():
     """全片中位密度 3.63 字/秒，正常讲话不能被误判成饥饿。"""
     segs = [seg(0.0, 30.0, "字" * 100)]
-    assert T.starved_spans(segs) == []
+    assert audit.starved_spans(segs) == []
 
 
 def test_short_segment_is_not_starved():
     """短段交给幻觉那条路处理，不进补转清单，否则清单会被碎片淹没。"""
     segs = [seg(0.0, 6.0, "嗯嗯")]
-    assert T.starved_spans(segs) == []
+    assert audit.starved_spans(segs) == []
 
 
 def test_audit_includes_starved_spans(monkeypatch):
@@ -75,7 +75,7 @@ def test_audit_includes_starved_spans(monkeypatch):
     data = {"duration": 2000.0,
             "segments": [seg(0.0, 1500.0, "字" * 4000),
                          seg(1500.0, 1900.0, "字" * 120, logprob=-0.25)]}
-    rep = T.audit(data, FakeLoud())
+    rep = audit.audit(data, FakeLoud())
     labels = [lab for _, _, lab in rep["spans"]]
     assert any("饥饿" in lab for lab in labels)
 
@@ -86,7 +86,7 @@ def test_final_audit_reports_effective_speech_not_wall_clock():
     """质检报告过去审的是 pass1，交付的却是合并稿，两个数差了 7 个百分点。"""
     rows = [{"start": 0.0, "end": 100.0, "text": "字" * 300},
             {"start": 100.0, "end": 200.0, "text": "字" * 30}]
-    rep = T.audit_rows(rows, 400.0)
+    rep = audit.audit_rows(rows, 400.0)
     assert rep["cover_pct"] == pytest.approx(50.0, abs=0.1)
     # 后一段密度 0.3 字/秒，不能算进有效语音
     assert rep["speech_pct"] < rep["cover_pct"]
@@ -95,7 +95,7 @@ def test_final_audit_reports_effective_speech_not_wall_clock():
 
 def test_final_audit_flags_nothing_on_clean_rows():
     rows = [{"start": t, "end": t + 10.0, "text": "字" * 35} for t in range(0, 100, 10)]
-    rep = T.audit_rows(rows, 100.0)
+    rep = audit.audit_rows(rows, 100.0)
     assert rep["cover_pct"] == pytest.approx(100.0, abs=0.1)
     assert rep["starved"] == 0
 
@@ -107,7 +107,7 @@ def test_srt_cues_never_overlap():
     rows = [{"start": 25.0, "end": 108.0, "text": "上课的时间差不多到了"},
             {"start": 65.0, "end": 113.0, "text": "请外面的学员进场入座"},
             {"start": 112.0, "end": 142.0, "text": "我们现在开始上课"}]
-    cues = T.resplit_rows(rows)
+    cues = render.resplit_rows(rows)
     for a, b in zip(cues, cues[1:]):
         assert a["end"] <= b["start"] + 1e-6, "字幕条不允许时间重叠"
         assert a["start"] <= b["start"]
@@ -118,7 +118,7 @@ def test_srt_splits_overlong_cue_using_word_times():
     text = "这是一段很长的话需要按词的时间切成若干条字幕方便逐句核对原音"
     rows = [{"start": 0.0, "end": 120.0, "text": text,
              "words": even_words(0.0, 120.0, text)}]
-    cues = T.resplit_rows(rows, max_dur=8.0, max_chars=16)
+    cues = render.resplit_rows(rows, max_dur=8.0, max_chars=16)
     assert len(cues) >= 4
     assert all(c["end"] - c["start"] <= 8.0 + 1e-6 for c in cues)
     assert "".join(c["text"] for c in cues) == text
@@ -130,7 +130,7 @@ def test_srt_split_keeps_words_at_their_real_time():
     words = ([{"start": 0.0, "end": 1.0, "word": c} for c in "前半段"]
              + [{"start": 100.0, "end": 101.0, "word": c} for c in "后半段"])
     rows = [{"start": 0.0, "end": 101.0, "text": text, "words": words}]
-    cues = T.resplit_rows(rows, max_dur=8.0, max_chars=16)
+    cues = render.resplit_rows(rows, max_dur=8.0, max_chars=16)
     assert len(cues) == 2
     assert cues[0]["end"] <= 2.0
     assert cues[1]["start"] >= 99.0
@@ -139,7 +139,7 @@ def test_srt_split_keeps_words_at_their_real_time():
 def test_srt_drops_nothing():
     rows = [{"start": 0.0, "end": 5.0, "text": "甲乙丙"},
             {"start": 5.0, "end": 9.0, "text": "丁戊己"}]
-    cues = T.resplit_rows(rows)
+    cues = render.resplit_rows(rows)
     assert "".join(c["text"] for c in cues) == "甲乙丙丁戊己"
 
 
@@ -148,14 +148,14 @@ def test_srt_drops_nothing():
 def test_clause_lead_not_inserted_after_copula():
     """实测 15 处 `这是，第一个环节`——连接词规则没看前一个字。"""
     t = "今天的话课程有三个环节的内容这是第一个环节第二个环节我们会邀请到一位老师"
-    out = T.insert_clause_breaks(t)
+    out = render.insert_clause_breaks(t)
     assert "是，第" not in out
     assert "了，第" not in out
 
 
 def test_clause_lead_still_breaks_long_runs():
     t = "我们把这件事情从头到尾再仔细讲一遍接下来要说的是另外一个完全不同的问题"
-    out = T.insert_clause_breaks(t)
+    out = render.insert_clause_breaks(t)
     assert "遍，接下来" in out, "长串还是要断开，不能因为加了护栏就一刀不切"
 
 
@@ -164,31 +164,31 @@ def test_word_gaps_become_punctuation():
     words = ([{"start": 0.0, "end": 1.0, "word": c} for c in "前面这半句"]
              + [{"start": 2.5, "end": 3.5, "word": c} for c in "后面那半句"])
     row = {"start": 0.0, "end": 3.5, "text": "前面这半句后面那半句", "words": words}
-    out = T.punctuate_row(row)
+    out = render.punctuate_row(row)
     assert out == "前面这半句。后面那半句", "1.5 秒的停顿应该落成句号，且落在两半句之间"
 
 
 def test_gap_thresholds_adapt_to_a_slow_speaker():
     """慢速歌唱这类慢速音频，词间 0.5 秒是常态，固定 0.9 秒会把句号插进词中间。"""
     slow = [{"start": i * 1.0, "end": i * 1.0 + 0.5, "word": "字"} for i in range(60)]
-    cg, pg = T.gap_thresholds([{"words": slow}])
+    cg, pg = render.gap_thresholds([{"words": slow}])
     assert cg >= 0.45, "慢速讲者的逗号阈值必须跟着抬上去"
     assert pg > cg
 
 
 def test_gap_thresholds_adapt_to_a_fast_speaker():
     fast = [{"start": i * 0.22, "end": i * 0.22 + 0.2, "word": "字"} for i in range(60)]
-    cg, pg = T.gap_thresholds([{"words": fast}])
+    cg, pg = render.gap_thresholds([{"words": fast}])
     assert cg <= 0.35, "语速快的讲者，阈值要压下来才断得出逗号"
 
 
 def test_gap_thresholds_fall_back_when_too_few_words():
-    assert T.gap_thresholds([]) == (0.35, 0.90)
+    assert render.gap_thresholds([]) == (0.35, 0.90)
 
 
 def test_punctuate_row_without_words_is_identity():
     row = {"start": 0.0, "end": 3.0, "text": "没有词级时间戳"}
-    assert T.punctuate_row(row) == "没有词级时间戳"
+    assert render.punctuate_row(row) == "没有词级时间戳"
 
 
 # ---------------------------------------------------------------- 保真护栏
@@ -197,7 +197,7 @@ def test_speaker_repetition_is_never_collapsed():
     """`业务交流业务交流` 在 pass1 原始输出里就是这样——79/89 处重复源自单段内部，
     是讲者自己的重复，不是合并产生的。自动折叠等于坑 4 那类静悄悄删真内容。"""
     t = "由我先给大家进行业务交流业务交流就是财务管理"
-    out = T.insert_clause_breaks(t)
+    out = render.insert_clause_breaks(t)
     assert out.count("业务交流") == 2
 
 
@@ -205,7 +205,7 @@ def test_merge_keeps_content_unique_to_each_pass():
     """时间重叠的两段不能整段丢，同一时间窗里另一路常有对方漏掉的内容。"""
     rows = [{"start": 0.0, "end": 10.0, "text": "根据大型活动场所财务管理办法第九条规定"},
             {"start": 0.5, "end": 10.5, "text": "根据大型活动场所财务管理办法第九条规定应当指定三人管理"}]
-    out = T.merge_rows(rows)
+    out = merge.merge_rows(rows)
     joined = "".join(r["text"] for r in out)
     assert "应当指定三人管理" in joined
     assert joined.count("第九条规定") == 1
@@ -216,7 +216,7 @@ def test_merge_keeps_repeated_citations_when_times_do_not_overlap():
     name = "根据大型活动场所财务管理办法第九条"
     rows = [{"start": 0.0, "end": 5.0, "text": name + "我们要做资产登记"},
             {"start": 20.0, "end": 25.0, "text": name + "还要做年度报告"}]
-    out = T.merge_rows(rows)
+    out = merge.merge_rows(rows)
     joined = "".join(r["text"] for r in out)
     assert joined.count(name) == 2
 
@@ -234,7 +234,7 @@ def test_starved_row_is_backfilled_without_duplicating_itself():
     patch = [{"span": [0.0, 90.0], "label": "段内饥饿",
               "attempts": [{"mode": "novad",
                             "rows": [{"start": 0.0, "end": 60.0, "text": full}]}]}]
-    rows = T.combine(passes, patch, {}, [], 300.0)
+    rows = merge.combine(passes, patch, {}, [], 300.0)
     joined = "".join(r["text"] for r in rows)
     assert "这些都是原本被吞掉没转出来的内容" in joined, "补转内容必须进得来"
     assert joined.count(kept) == 1, f"原行不该和补转结果重复出现：{joined}"
@@ -245,7 +245,7 @@ def test_starved_row_is_backfilled_without_duplicating_itself():
 def test_clause_break_survives_after_final_particle():
     """的/了 是句末助词，它们后面恰恰该断句——把它们当粘连字会挡掉正确的逗号。"""
     t = "这个会计科目的使用范围已经明显缩小了所以说新旧制度衔接的时候一定要重新分类处理"
-    out = T.insert_clause_breaks(t)
+    out = render.insert_clause_breaks(t)
     assert "了，所以说" in out
 
 
@@ -253,6 +253,6 @@ def test_terms_report_counts_hits():
     """README 教人手工统计频次再加条目，这件事该由代码来做。"""
     terms = {"fixes": [["才税管理", "财税管理"], ["从来不会出现的词", "X"]]}
     text = "才税管理的才税管理讲座"
-    hits = T.terms_hits(text, terms)
+    hits = render.terms_hits(text, terms)
     assert hits["才税管理"] == 2
     assert hits["从来不会出现的词"] == 0
