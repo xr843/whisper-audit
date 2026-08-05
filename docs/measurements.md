@@ -85,6 +85,26 @@ pinyin_fix("这一规定将大型活动场所的税务登记义务也纳入管�
 
 ---
 
+## 中文专用第二引擎（FunASR）—— 未接入
+
+2026-08-05 尝试接入，**卡在环境层面，不是设计层面**。如实记录，便于下次接着弄。
+
+| 尝试 | 结果 |
+|---|---|
+| `pip install funasr` | 成功，1.4.1 |
+| `AutoModel(model="paraformer-zh")` | 模型下载成功（950MB，解析为 `speech_seaco_paraformer_large`），但 `RuntimeError: model 'paraformer-zh' is not registered` |
+| 改用完整模型 id | ModelScope 对 `seg_dict` 返回 **404**，且注册表仍认不出该 id |
+| 改用 `iic/SenseVoiceSmall` | 下载超时（本机走代理，~1MB/s，模型约 900MB） |
+
+funasr 1.4.1 的注册表里有 `SeacoParaformer`、`Paraformer`、`SenseVoiceSmall` 这些**类名**，
+但 `paraformer-zh` 这类**模型别名**解析不到类——像是 1.4.x 重构注册机制后的别名映射问题。
+下次可先试 `pip install funasr==1.1.x`（模型已在 `~/.cache/modelscope`，不必重下）。
+
+**当前处置**：`meeting` 档保持 whisper 双路不变，无任何退化。
+Task 1 建立的 Engine 抽象已经就位，接入第二引擎只需实现一个 `transcribe()` 与一个
+纯函数适配器——**但适配器必须等拿到真实输出格式再写**。
+按推测的字段名写适配器再让测试去迁就它，等于给自己造一个看起来绿的假象。
+
 ## 速度
 
 | 配置 | 实时倍数 | 说明 |
