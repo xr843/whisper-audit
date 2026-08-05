@@ -50,7 +50,7 @@ def merge_rows(rows):
 
 
 def combine(passes, patch, terms, breaks, dur, drop_spans=(),
-            pinyin=True, loose=False, return_hits=False):
+            pinyin=False, loose=False, return_hits=False):
     """逐 30 秒窗口在各路之间取字数多的，再用补转填两路都空的洞。
 
     `pinyin=True` 时在字面替换之后再跑一遍拼音模糊纠错。

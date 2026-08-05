@@ -31,7 +31,7 @@ def srt_file(tmp_path):
 def test_make_goldset_extracts_rows(srt_file):
     rows = G.make_goldset(srt_file)
     assert len(rows) == 3
-    assert rows[0] == (1.0, "上课的时间差不多到了")
+    assert rows[0] == (1.0, 3.0, "上课的时间差不多到了")
 
 
 def test_make_goldset_respects_time_window(srt_file):
@@ -40,7 +40,7 @@ def test_make_goldset_respects_time_window(srt_file):
 
 
 def test_tsv_roundtrip(tmp_path):
-    rows = [(1.0, "甲乙丙"), (3.5, "丁戊己")]
+    rows = [(1.0, 3.0, "甲乙丙"), (3.5, 6.0, "丁戊己")]
     p = tmp_path / "g.tsv"
     G.write_tsv(rows, str(p))
     assert G.read_tsv(str(p)) == rows
@@ -49,8 +49,15 @@ def test_tsv_roundtrip(tmp_path):
 def test_tsv_tolerates_hand_edited_whitespace(tmp_path):
     """人工改完可能留下多余空格或空行，读取必须容忍。"""
     p = tmp_path / "g.tsv"
-    p.write_text("1.0\t 甲乙丙 \n\n3.5\t丁戊己\n", encoding="utf-8")
-    assert G.read_tsv(str(p)) == [(1.0, "甲乙丙"), (3.5, "丁戊己")]
+    p.write_text("1.0\t3.0\t 甲乙丙 \n\n3.5\t6.0\t丁戊己\n", encoding="utf-8")
+    assert G.read_tsv(str(p)) == [(1.0, 3.0, "甲乙丙"), (3.5, 6.0, "丁戊己")]
+
+
+def test_read_tsv_accepts_the_old_two_column_format(tmp_path):
+    """旧格式只有起始时间，结束时间退化为起始时间——读得进来，不报错。"""
+    p = tmp_path / "old.tsv"
+    p.write_text("1.0\t甲乙丙\n", encoding="utf-8")
+    assert G.read_tsv(str(p)) == [(1.0, 1.0, "甲乙丙")]
 
 
 def test_parse_hms_accepts_three_forms():
@@ -73,7 +80,7 @@ def test_evaluate_srt_scores_zero_on_untouched_goldset(srt_file, tmp_path):
 def test_evaluate_srt_counts_hand_corrections(srt_file, tmp_path):
     """把金标里一个字改掉，评测要能算出来。"""
     rows = G.make_goldset(srt_file)
-    rows[0] = (rows[0][0], rows[0][1].replace("上课", "上刻"))
+    rows[0] = (rows[0][0], rows[0][1], rows[0][2].replace("上课", "上刻"))
     gold = tmp_path / "g.tsv"
     G.write_tsv(rows, str(gold))
     rep = G.evaluate_srt(str(gold), srt_file)
@@ -86,7 +93,7 @@ def test_evaluate_srt_window_covers_last_gold_row(srt_file, tmp_path):
     gold = tmp_path / "g.tsv"
     G.write_tsv(G.make_goldset(srt_file), str(gold))
     rep = G.evaluate_srt(str(gold), srt_file)
-    assert "这一条在时间窗之外" in "".join(t for _, t in G.read_tsv(str(gold)))
+    assert "这一条在时间窗之外" in "".join(t for _, _, t in G.read_tsv(str(gold)))
     assert rep["dele"] == 0, "末条被漏掉会表现为一堆删除错误"
 
 
@@ -102,3 +109,26 @@ def test_find_srt_errors_when_ambiguous(tmp_path):
     (tmp_path / "b.srt").write_text(SRT, encoding="utf-8")
     with pytest.raises(ValueError):
         G.find_srt(str(tmp_path))
+
+
+def test_evaluate_srt_survives_resegmentation(tmp_path):
+    """跨版本对比是金标存在的理由：v2 重新切分但一字不差，必须判 0 错。
+
+    曾经按「start 落在窗口内」选取 hyp，v2 里 start 晚于金标末条 start 的
+    那一条会被整条丢掉，一字不差的稿子被判出 7 个删除错、CER 35%。
+    """
+    v1 = tmp_path / "v1.srt"
+    v1.write_text("1\n00:00:01,000 --> 00:00:05,000\n前面这句话\n\n"
+                  "2\n00:00:06,500 --> 00:00:12,000\n今天要讲的内容是所得税优惠政策\n",
+                  encoding="utf-8")
+    v2 = tmp_path / "v2.srt"
+    v2.write_text("1\n00:00:01,000 --> 00:00:05,000\n前面这句话\n\n"
+                  "2\n00:00:06,500 --> 00:00:08,000\n今天要讲的内容是\n\n"
+                  "3\n00:00:08,200 --> 00:00:12,000\n所得税优惠政策\n",
+                  encoding="utf-8")
+    gold = tmp_path / "g.tsv"
+    G.write_tsv(G.make_goldset(str(v1)), str(gold))
+    assert G.evaluate_srt(str(gold), str(v1))["cer"] == 0.0
+    rep = G.evaluate_srt(str(gold), str(v2))
+    assert rep["cer"] == 0.0, f"重新切分不该产生错误：{rep}"
+    assert rep["dele"] == 0

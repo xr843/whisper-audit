@@ -16,9 +16,10 @@ def one_pass(text, start=0.0, end=10.0, dur=60.0):
 
 def test_combine_applies_pinyin_fix_and_records_hits():
     rows, hits = M.combine(one_pass("才税管理的要点在这里说清楚"), [], TERMS, [], 60.0,
-                           return_hits=True)
+                           pinyin=True, return_hits=True)
     assert "财税管理" in "".join(r["text"] for r in rows)
     assert hits and hits[0]["to"] == "财税管理"
+    assert "t" in hits[0], "改动必须带时间才追溯得到"
 
 
 def test_pinyin_fix_can_be_disabled():
@@ -38,7 +39,7 @@ def test_combine_without_return_hits_still_returns_plain_rows():
 def test_hits_are_not_double_counted():
     """norm() 带副作用，每条 segment 只能调一次；调两次记账会翻倍。"""
     _, hits = M.combine(one_pass("才税管理的要点在这里说清楚"), [], TERMS, [], 60.0,
-                        return_hits=True)
+                        pinyin=True, return_hits=True)
     assert len(hits) == 1, f"同一处改动被记了 {len(hits)} 次"
 
 
@@ -52,7 +53,7 @@ def test_losing_patch_candidates_do_not_pollute_the_ledger():
         {"mode": "vad_loose", "rows": [
             {"start": 0.0, "end": 30.0, "text": "才税管理"}]},
     ]}]
-    rows, hits = M.combine(passes, patch, TERMS, [], 60.0, return_hits=True)
+    rows, hits = M.combine(passes, patch, TERMS, [], 60.0, pinyin=True, return_hits=True)
     joined = "".join(r["text"] for r in rows)
     assert "补转捞回来的完整内容" in joined, "字多的那组候选应当胜出"
     # 落选那组也含「才税管理」，若被计入则会多出记账条目
@@ -74,8 +75,37 @@ def test_loose_is_off_by_default():
     """
     terms = {"terms": ["大型活动场所"], "fixes": []}
     text = "这里提到大型活动参说的登记问题需要注意"
-    strict, h1 = M.combine(one_pass(text), [], terms, [], 60.0, return_hits=True)
-    loose, h2 = M.combine(one_pass(text), [], terms, [], 60.0, loose=True,
+    strict, h1 = M.combine(one_pass(text), [], terms, [], 60.0, pinyin=True,
+                           return_hits=True)
+    loose, h2 = M.combine(one_pass(text), [], terms, [], 60.0, pinyin=True, loose=True,
                           return_hits=True)
     assert "参说" in "".join(r["text"] for r in strict) and h1 == []
     assert "大型活动场所" in "".join(r["text"] for r in loose) and h2
+
+
+def test_pinyin_fix_is_off_by_default():
+    """默认必须关。无调拼音会把两个真实存在、含义不同的词判成同一个：
+
+        节余分配 → 结余分配   （jie yu，会计上是两个不同概念）
+        内部空值 → 内部控制   （kong zhi）
+
+    这不是「补长词就能堵住的词边界问题」，是拼音粒度本身的极限。
+    """
+    rows, hits = M.combine(one_pass("才税管理的要点在这里说清楚"), [], TERMS, [], 60.0,
+                           return_hits=True)
+    assert "才税管理" in "".join(r["text"] for r in rows)
+    assert hits == []
+
+
+def test_real_homophone_words_are_corrupted_when_enabled():
+    """开启后的已知代价，用测试固化，免得被当成「已经安全了」。
+
+    这条**故意断言坏行为**：将来若加了分词/上下文校验能分辨这两个词，
+    它会失败，提醒把文档里的警告一起更新。
+    """
+    from audio_transcribe.terms import pinyin_fix
+    terms = {"terms": ["结余分配", "内部控制"]}
+    for src, bad in (("本年度完成节余分配后转入下年度", "结余分配"),
+                     ("那条内部空值字段没有清理干净", "内部控制")):
+        out, hits = pinyin_fix(src, terms)
+        assert bad in out and hits, f"预期的已知缺陷未复现：{src} -> {out}"

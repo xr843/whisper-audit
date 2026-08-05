@@ -1516,8 +1516,8 @@ import time
 sys.path.insert(0, ".")
 from audio_transcribe.audio import ensure_cuda_libs
 
-BASELINE = 8.4          # 15 分钟片段、int8_float16、batch16、beam5、词级时间戳开
-TOLERANCE = 0.05        # 退化不得超过 5% → 下限 7.98x
+BASELINE = 24.5         # bench15.wav（15 分钟）、int8_float16、batch16、beam5、词级时间戳开
+TOLERANCE = 0.05        # 退化不得超过 5% → 下限 23.3x
 
 
 def run_once(wav, words):
@@ -1565,7 +1565,7 @@ if __name__ == "__main__":
 - [ ] **Step 2: 测当前吞吐并与基线比对**
 
 Run: `python3 bench/throughput.py --wav <15分钟基准片段>.wav`
-Expected: 打印实时倍数。**与基线 8.8x 比，退化不得超过 5%（即不低于 8.36x）**
+Expected: 打印实时倍数。**与基线 24.5x 比，退化不得超过 5%（即不低于 23.3x）**
 
 - [ ] **Step 3: 把所有实测数字汇总进 docs/measurements.md**
 
@@ -1700,7 +1700,7 @@ git commit -m "开源化：MIT 许可、GitHub Actions、术语表脱敏移入 e
 - [ ] 拼音纠错报出独立 CER 增量；不劣化才默认开启
 - [ ] FunASR 作为第二路跑通；跨引擎合并有测试证明不丢内容
 - [ ] `--polish` 的拼音拒绝率被记账；单测证明不同音改动 100% 被拒
-- [ ] 默认档速度退化 ≤ 5%（≥ 8.36x 实时）
+- [ ] 默认档速度退化 ≤ 5%（≥ 23.3x 实时）
 - [ ] `pip install -e .` 后 `audio-transcribe` 可用
 - [ ] GitHub Actions 绿
 - [ ] 全部现有 24 个测试仍然通过

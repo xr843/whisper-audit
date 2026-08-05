@@ -9,7 +9,7 @@
 from .evaluate import pinyin_key
 
 
-def pinyin_fix(text, terms, loose=True):
+def pinyin_fix(text, terms, loose=False):
     words = [w for w in (terms.get("terms") or []) if len(w) >= 2]
     if not words or not text:
         return text, []

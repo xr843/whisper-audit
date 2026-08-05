@@ -41,8 +41,10 @@ def add_run_args(ap):
     ap.add_argument("--device", default="cuda", choices=["cuda", "cpu", "auto"])
     ap.add_argument("--compute", default=None, help="覆盖档位里的 compute_type")
     ap.add_argument("--language", default="zh")
-    ap.add_argument("--no-pinyin-fix", action="store_true",
-                    help="关闭拼音级术语纠错")
+    ap.add_argument("--pinyin-fix", action="store_true",
+                    help="开启拼音级术语纠错。**默认关**——无调拼音会把两个真实存在、"
+                         "含义不同的词判成同一个（节余/结余、空值/控制），"
+                         "补多少术语都堵不住。用之前先读 docs/measurements.md")
     ap.add_argument("--loose-pinyin", action="store_true",
                     help="拼音纠错启用近音归并（zh/z、ang/an…）。"
                          "能多修几处，但词边界误伤风险更高，默认关")
@@ -59,9 +61,15 @@ def add_goldset_args(ap):
 
 
 def add_eval_args(ap):
-    ap.add_argument("--gold", required=True, help="人工校对过的 .gold.tsv")
-    ap.add_argument("--hyp", required=True, help="输出目录，或直接给 .srt 文件")
+    ap.add_argument("--gold", default=None, help="人工校对过的 .gold.tsv")
+    ap.add_argument("--hyp", default=None, help="输出目录，或直接给 .srt 文件")
+    ap.add_argument("--manifest", default=None,
+                    help="公开集 jsonl（每行 {\"audio\":…, \"text\":…}），"
+                         "与 --gold/--hyp 二选一")
     ap.add_argument("--json", default=None, help="把报告写成 json")
+    ap.add_argument("--model", default="large-v3", help="仅 --manifest 时用")
+    ap.add_argument("--device", default="cuda", help="仅 --manifest 时用")
+    ap.add_argument("--language", default="zh", help="仅 --manifest 时用")
     return ap
 
 
@@ -100,7 +108,7 @@ def cmd_goldset(args):
         log("时间窗内没有字幕，检查 --from/--to")
         return 1
     write_tsv(rows, args.out)
-    nchar = sum(len(t) for _, t in rows)
+    nchar = sum(len(t) for _, _, t in rows)
     log(f"待校对稿 {args.out}：{len(rows)} 行 / {nchar:,} 字"
         f"（{hms(rows[0][0])}–{hms(rows[-1][0])}）")
     log("  现在打开它，**只改错字**——不要动时间戳、不要动格式、不要合并行。")
@@ -108,10 +116,45 @@ def cmd_goldset(args):
     return 0
 
 
+def _eval_manifest(args):
+    """跑公开集：逐条转录再按字加权汇总。
+
+    每条都要过一遍 ASR，所以这条路慢得多，且需要装好 ASR 后端。
+    """
+    from bench.manifest import eval_manifest, read_manifest
+    ensure_cuda_libs()
+    items = read_manifest(args.manifest)
+    log(f"公开集 {args.manifest}：{len(items)} 条，开始逐条转录…")
+
+    # 模型只加载一次。走 transcribe_pass 会每条重建一次模型——
+    # AISHELL test 有 7,000 多条，那是几十小时的纯加载时间。
+    from faster_whisper import BatchedInferencePipeline, WhisperModel
+    model = WhisperModel(args.model, device=args.device, compute_type="int8_float16")
+    pipe = BatchedInferencePipeline(model=model)
+    done = [0]
+
+    def run(path):
+        segs, _ = pipe.transcribe(path, language=args.language, batch_size=16,
+                                  beam_size=5, condition_on_previous_text=False)
+        text = "".join(s.text for s in segs)
+        done[0] += 1
+        if done[0] % 100 == 0:
+            log(f"  {done[0]}/{len(items)}")
+        return text
+
+    return eval_manifest(items, run)
+
+
 def cmd_eval(args):
     from .goldset import evaluate_srt, find_srt, format_report
-    srt = args.hyp if args.hyp.endswith(".srt") else find_srt(args.hyp)
-    rep = evaluate_srt(args.gold, srt)
+    if args.manifest:
+        rep = _eval_manifest(args)
+    elif args.gold and args.hyp:
+        srt = args.hyp if args.hyp.endswith(".srt") else find_srt(args.hyp)
+        rep = evaluate_srt(args.gold, srt)
+    else:
+        log("需要 --gold + --hyp，或者 --manifest")
+        return 2
     print(format_report(rep))
     if args.json:
         json.dump(rep, open(args.json, "w", encoding="utf-8"),
@@ -160,7 +203,7 @@ def cmd_run(args):
     patch = repatch(wav, rep["spans"], os.path.join(work, "repatch.json"),
                     compute=compute, **mk)
     rows, pyhits = combine(passes, patch, terms, breaks, dur, rep.get("drop", []),
-                           pinyin=not args.no_pinyin_fix, loose=args.loose_pinyin,
+                           pinyin=args.pinyin_fix, loose=args.loose_pinyin,
                            return_hits=True)
     per_pass = ", ".join(
         format(sum(len(s["text"]) for s in p["segments"]), ",") for p in passes)

@@ -80,3 +80,19 @@ def test_subcommand_name_is_not_swallowed_as_audio_path():
         if argv[0] not in cli.SUBCOMMANDS:
             argv.insert(0, "run")
         assert argv[0] == name
+
+
+def test_eval_requires_gold_and_hyp_or_manifest():
+    """两种入口二选一；都不给必须报错退出，而不是崩在 None 上。"""
+    assert cli.main(["eval"]) == 2
+    assert cli.main(["eval", "--gold", "g.tsv"]) == 2
+
+
+def test_eval_accepts_manifest_form():
+    ap = argparse.ArgumentParser(prog="audio-transcribe")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    for name in cli.SUBCOMMANDS:
+        cli._BUILDERS[name](sub.add_parser(name))
+    a = ap.parse_args(["eval", "--manifest", "bench/aishell_test.jsonl"])
+    assert a.manifest == "bench/aishell_test.jsonl"
+    assert a.gold is None and a.hyp is None

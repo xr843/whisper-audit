@@ -55,43 +55,61 @@ def make_goldset(srt_path, start=None, end=None):
             continue
         if end is not None and r["start"] >= end:
             continue
-        out.append((r["start"], r["text"]))
+        out.append((r["start"], r["end"], r["text"]))
     return out
 
 
 def write_tsv(rows, path):
+    """三列：起始秒 <TAB> 结束秒 <TAB> 文本。人只该动第三列。"""
     with open(path, "w", encoding="utf-8") as f:
-        for t, text in rows:
-            f.write(f"{t}\t{text}\n")
+        for a, b, text in rows:
+            f.write(f"{a}\t{b}\t{text}\n")
 
 
 def read_tsv(path):
-    """容忍人工编辑留下的多余空格与空行——人只该操心错字。"""
+    """容忍人工编辑留下的多余空格与空行——人只该操心错字。
+
+    两列的旧格式（起始秒 + 文本）也读得进来，结束时间退化为起始时间。
+    """
     rows = []
     for line in open(path, encoding="utf-8"):
         line = line.rstrip("\n")
         if not line.strip():
             continue
-        t, _, text = line.partition("\t")
-        rows.append((float(t.strip()), text.strip()))
+        parts = line.split("\t")
+        if len(parts) >= 3:
+            rows.append((float(parts[0].strip()), float(parts[1].strip()),
+                         "\t".join(parts[2:]).strip()))
+        else:
+            a = float(parts[0].strip())
+            rows.append((a, a, parts[1].strip() if len(parts) > 1 else ""))
     return rows
 
 
 def evaluate_srt(gold_path, hyp_srt_path):
     """金标 vs 成品字幕。
 
-    时间窗取金标首尾两条的 start，上界用 `<=` 把末条也含进来。
-    比较的是**拼接后的整段文本**，不做逐条对齐——逐条对齐会把
-    切分差异算成错误，而切分本来就允许不同。
+    窗口取金标的 [最早 start, 最晚 end]，hyp 按**时间重叠**选取而不是
+    「start 落在窗口内」。差别在跨版本对比时是致命的：
+
+        金标来自 v1，末条 "……内容是所得税优惠政策" @6.5s
+        v2 把同一句切成两条：@6.5s "……内容是" / @8.2s "所得税优惠政策"
+
+    按 start 落窗口内选取，第二条（8.2s > 金标末条 start 6.5s）会被整条丢掉，
+    于是一字不差的 v2 被判出 7 个删除错、CER 35%。而删除率正是这个项目的
+    招牌指标，「拿金标评测后续版本」又正是整套金标体系存在的理由。
+
+    比较的是**拼接后的整段文本**，不做逐条对齐——逐条对齐会把切分差异
+    算成错误，而切分本来就允许不同。
     """
     gold = read_tsv(gold_path)
     if not gold:
         raise ValueError(f"金标为空：{gold_path}")
-    lo = min(t for t, _ in gold)
-    hi = max(t for t, _ in gold)
-    ref = "".join(text for _, text in gold)
+    lo = min(a for a, _, _ in gold)
+    hi = max(b for _, b, _ in gold)
+    ref = "".join(text for _, _, text in gold)
     hyp = "".join(r["text"] for r in parse_srt(hyp_srt_path)
-                  if lo <= r["start"] <= hi)
+                  if r["end"] > lo and r["start"] < hi)
     rep = score(ref, hyp)
     rep["window"] = [lo, hi]
     return rep

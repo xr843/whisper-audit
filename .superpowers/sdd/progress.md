@@ -7,7 +7,7 @@ Task 1: complete (commits 601a376..HEAD, AST 逐函数比对 31/31 一致；**�
 ## GPU 待办（用户 GPU 忙，全部挂起）
 - [ ] Task 1 Step 7：真机冒烟，确认拆包后命令行行为不变
 - [ ] Task 8 Step 1/6：FunASR 输出格式探测 + 引擎真机验证
-- [ ] Task 12：吞吐基准，下限 7.98x
+- [x] Task 12：吞吐基准已跑，24.5x（旧 8.4x 是 GPU 忙时测的，已修正），下限 23.3x
 - [ ] Task 7/9/11 的 CER 增量实测（需跑流水线产出稿件）
 Task 2: complete (commit aca9bd7, 31 tests, 审查未单独跑——并入最终整支审查)
 Task 3: complete (commit e5bc004, 39 tests, 审查进行中)
@@ -27,5 +27,14 @@ Task 2 真机验证: audio-transcribe run 路径与 python3 transcribe.py 产出
 Task 4:  complete (commit 9b6c4e1, goldset/eval 全链路实跑验证, 63 tests)
 Task 4b: complete (commit a5e25c2, manifest + AISHELL 获取脚本)
 Task 5:  complete (commit a5e25c2, CI 夹具 6 条, 78 tests)
-Task 12: 脚本已写，待跑（等 FunASR 下载完，避免抢 8GB 显存）
+Task 12: complete (commit e2b04f0) — 24.5x，两套脚本互印证
 Task 8:  FunASR 模型下载中（944MB，本机走代理约 1-2MB/s）
+
+Task 7:  complete (commit 722f549) — 拼音纠错接入，记账修了三处
+Task 10: complete (commit 27650d3) — polish 拼音硬约束，agent 发现 brief 的示例字对并非同音
+Task 4/4b/5/6 审查：2 Critical + 4 Important，均已独立复现
+  C1 pinyin_fix 危险是系统性的（节余/结余、空值/控制），**默认已改为关闭**
+  C2 evaluate_srt 跨版本对比会因重新切分误报删除错，**已改为按时间重叠选取 + 三列金标**
+  I3 pinyin_fix 自身 loose 默认改 False
+  I4/I5 账本与计划文档的旧速度数字已同步
+  I6 eval --manifest CLI 待接
