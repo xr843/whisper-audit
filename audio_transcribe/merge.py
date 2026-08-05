@@ -1,5 +1,6 @@
 """多路转录结果合并。"""
 from .audit import HALLU_PAT, in_any
+from .terms import pinyin_fix
 
 
 def strip_common(a, b, min_block=8):
@@ -48,17 +49,34 @@ def merge_rows(rows):
     return out
 
 
-def combine(passes, patch, terms, breaks, dur, drop_spans=()):
-    """逐 30 秒窗口在各路之间取字数多的，再用补转填两路都空的洞。"""
+def combine(passes, patch, terms, breaks, dur, drop_spans=(),
+            pinyin=True, loose=False, return_hits=False):
+    """逐 30 秒窗口在各路之间取字数多的，再用补转填两路都空的洞。
+
+    `pinyin=True` 时在字面替换之后再跑一遍拼音模糊纠错。
+    `loose` 默认 **False**：近音归并（zh/z、ang/an…）碰撞面大得多，
+    实测能多修几处，但也更容易在词边界上误伤，要用得显式开。
+
+    `return_hits=True` 时一并返回拼音纠错的改动清单，写进质检报告——
+    凡是自动改正文的逻辑都必须留痕。
+    """
     import opencc
     cc = opencc.OpenCC("t2s")
     fixes = terms.get("fixes", [])
 
     def norm(t):
+        """返回 (规范化后的文本, 拼音纠错改动清单)。
+
+        改动清单按行携带，最后只从**进入成品的行**收集——
+        补转会为同一区段生成多组候选，落选的那些也会走 norm，
+        若在这里直接累加，质检报告会列出根本没进成品的修改。
+        """
         t = cc.convert(t).strip()
-        for a, b in fixes:
+        for a, b in fixes:          # 字面替换优先：人工逐条确认过的
             t = t.replace(a, b)
-        return t
+        if not pinyin:
+            return t, []
+        return pinyin_fix(t, terms, loose=loose)
 
     def usable(t, start):
         if not t or HALLU_PAT.search(t):
@@ -70,11 +88,17 @@ def combine(passes, patch, terms, breaks, dur, drop_spans=()):
             return False
         return True
 
+    # norm() 每条只调一次——它带副作用（累积拼音纠错的改动清单），
+    # 调两次会让记账翻倍。
     prepped = []
     for p in passes:
-        prepped.append([{"start": s["start"], "end": s["end"], "text": norm(s["text"]),
-                         "words": s.get("words") or []}
-                        for s in p["segments"] if usable(norm(s["text"]), s["start"])])
+        rows = []
+        for s in p["segments"]:
+            t, h = norm(s["text"])
+            if usable(t, s["start"]):
+                rows.append({"start": s["start"], "end": s["end"], "text": t,
+                             "words": s.get("words") or [], "_pyhits": h})
+        prepped.append(rows)
 
     W = 30.0
     buckets = []
@@ -102,10 +126,15 @@ def combine(passes, patch, terms, breaks, dur, drop_spans=()):
             continue
         best, best_n = None, 0
         for att in item["attempts"]:
-            cand = [{"start": r["start"], "end": r["end"], "text": norm(r["text"]),
-                     "words": r.get("words") or [], "src": "patch"}
-                    for r in att["rows"]
-                    if a - 0.5 <= r["start"] <= b + 0.5 and usable(norm(r["text"]), r["start"])]
+            cand = []
+            for r in att["rows"]:
+                if not (a - 0.5 <= r["start"] <= b + 0.5):
+                    continue
+                t, h = norm(r["text"])
+                if usable(t, r["start"]):
+                    cand.append({"start": r["start"], "end": r["end"], "text": t,
+                                 "words": r.get("words") or [], "src": "patch",
+                                 "_pyhits": h})
             n = sum(len(r["text"]) for r in cand)
             if n > best_n:
                 best, best_n = cand, n
@@ -116,4 +145,11 @@ def combine(passes, patch, terms, breaks, dur, drop_spans=()):
             picked = [r for r in picked if not (r["start"] >= a - 0.5 and r["end"] <= b + 0.5)]
             picked.extend(best)
 
-    return merge_rows(picked)
+    rows = merge_rows(picked)
+    # 带上所在行的起始时间。行内偏移单独拿出来没有身份，无法回听定位——
+    # 「改动可追溯」要能落到音频上的一个时刻才算数。
+    hits = [{**h, "t": round(r["start"], 2)}
+            for r in rows for h in r.get("_pyhits", [])]
+    for r in rows:
+        r.pop("_pyhits", None)
+    return (rows, hits) if return_hits else rows

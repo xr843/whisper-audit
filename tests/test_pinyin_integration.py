@@ -1,0 +1,81 @@
+"""拼音纠错接入流水线的回归测试。
+
+重点不在「能不能改」，而在「改了有没有如实记账」——
+凡是自动改正文的逻辑，改动必须可追溯，否则出问题时无从查起。
+"""
+from audio_transcribe import merge as M
+
+TERMS = {"terms": ["财税管理"], "fixes": []}
+
+
+def one_pass(text, start=0.0, end=10.0, dur=60.0):
+    return [{"duration": dur,
+             "segments": [{"start": start, "end": end, "text": text,
+                           "avg_logprob": -0.3, "no_speech_prob": 0.1}]}]
+
+
+def test_combine_applies_pinyin_fix_and_records_hits():
+    rows, hits = M.combine(one_pass("才税管理的要点在这里说清楚"), [], TERMS, [], 60.0,
+                           return_hits=True)
+    assert "财税管理" in "".join(r["text"] for r in rows)
+    assert hits and hits[0]["to"] == "财税管理"
+
+
+def test_pinyin_fix_can_be_disabled():
+    rows, hits = M.combine(one_pass("才税管理的要点在这里说清楚"), [], TERMS, [], 60.0,
+                           pinyin=False, return_hits=True)
+    assert "才税管理" in "".join(r["text"] for r in rows)
+    assert hits == []
+
+
+def test_combine_without_return_hits_still_returns_plain_rows():
+    """老调用点不传 return_hits，必须还是拿到一个 list 而不是 tuple。"""
+    rows = M.combine(one_pass("才税管理的要点在这里说清楚"), [], TERMS, [], 60.0)
+    assert isinstance(rows, list)
+    assert rows and isinstance(rows[0], dict)
+
+
+def test_hits_are_not_double_counted():
+    """norm() 带副作用，每条 segment 只能调一次；调两次记账会翻倍。"""
+    _, hits = M.combine(one_pass("才税管理的要点在这里说清楚"), [], TERMS, [], 60.0,
+                        return_hits=True)
+    assert len(hits) == 1, f"同一处改动被记了 {len(hits)} 次"
+
+
+def test_losing_patch_candidates_do_not_pollute_the_ledger():
+    """补转会为同一区段生成多组候选，落选的那组不能进记账清单——
+    否则质检报告会列出根本没进成品的修改。"""
+    passes = one_pass("这里原本很短", 0.0, 30.0, 60.0)
+    patch = [{"span": [0.0, 30.0], "label": "段内饥饿", "attempts": [
+        {"mode": "novad", "rows": [
+            {"start": 0.0, "end": 30.0, "text": "才税管理" * 2 + "补转捞回来的完整内容长得多"}]},
+        {"mode": "vad_loose", "rows": [
+            {"start": 0.0, "end": 30.0, "text": "才税管理"}]},
+    ]}]
+    rows, hits = M.combine(passes, patch, TERMS, [], 60.0, return_hits=True)
+    joined = "".join(r["text"] for r in rows)
+    assert "补转捞回来的完整内容" in joined, "字多的那组候选应当胜出"
+    # 落选那组也含「才税管理」，若被计入则会多出记账条目
+    assert len(hits) == joined.count("财税管理"), \
+        f"记账 {len(hits)} 条，成品里只有 {joined.count('财税管理')} 处"
+
+
+def test_terms_without_terms_field_is_a_noop():
+    rows, hits = M.combine(one_pass("这段文本没有任何术语需要修正"), [],
+                           {"fixes": []}, [], 60.0, return_hits=True)
+    assert hits == []
+    assert "这段文本没有任何术语需要修正" in "".join(r["text"] for r in rows)
+
+
+def test_loose_is_off_by_default():
+    """近音归并碰撞面大，必须显式开启。
+
+    「参说」loose 下与「场所」同键，严格模式下不该被改。
+    """
+    terms = {"terms": ["大型活动场所"], "fixes": []}
+    text = "这里提到大型活动参说的登记问题需要注意"
+    strict, h1 = M.combine(one_pass(text), [], terms, [], 60.0, return_hits=True)
+    loose, h2 = M.combine(one_pass(text), [], terms, [], 60.0, loose=True,
+                          return_hits=True)
+    assert "参说" in "".join(r["text"] for r in strict) and h1 == []
+    assert "大型活动场所" in "".join(r["text"] for r in loose) and h2

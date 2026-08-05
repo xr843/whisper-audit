@@ -41,6 +41,11 @@ def add_run_args(ap):
     ap.add_argument("--device", default="cuda", choices=["cuda", "cpu", "auto"])
     ap.add_argument("--compute", default=None, help="覆盖档位里的 compute_type")
     ap.add_argument("--language", default="zh")
+    ap.add_argument("--no-pinyin-fix", action="store_true",
+                    help="关闭拼音级术语纠错")
+    ap.add_argument("--loose-pinyin", action="store_true",
+                    help="拼音纠错启用近音归并（zh/z、ang/an…）。"
+                         "能多修几处，但词边界误伤风险更高，默认关")
     return ap
 
 
@@ -154,7 +159,9 @@ def cmd_run(args):
 
     patch = repatch(wav, rep["spans"], os.path.join(work, "repatch.json"),
                     compute=compute, **mk)
-    rows = combine(passes, patch, terms, breaks, dur, rep.get("drop", []))
+    rows, pyhits = combine(passes, patch, terms, breaks, dur, rep.get("drop", []),
+                           pinyin=not args.no_pinyin_fix, loose=args.loose_pinyin,
+                           return_hits=True)
     per_pass = ", ".join(
         format(sum(len(s["text"]) for s in p["segments"]), ",") for p in passes)
     log(f"合并后 {len(rows)} 段 / {sum(len(r['text']) for r in rows):,} 字"
@@ -167,6 +174,13 @@ def cmd_run(args):
         f"残余饥饿段 {fin['starved']} 处")
     if fin["starved"]:
         log("  ⚠ 仍有段落时长撑不起字数，补转没能捞回来，出稿前请对照 .srt 回听这些位置")
+
+    if pyhits:
+        from collections import Counter
+        c = Counter((h["from"], h["to"]) for h in pyhits)
+        top = "、".join(f"{a}→{b}×{n}" for (a, b), n in c.most_common(3))
+        log(f"拼音纠错：{len(pyhits)} 处 / {len(c)} 种（{top}）"
+            + ("　近音归并已开启" if args.loose_pinyin else ""))
 
     # 必须在替换**之前**数：正文里源词早被换掉了，事后统计只会全是 0
     hits = terms_hits(raw_text(passes), terms)
@@ -192,13 +206,14 @@ def cmd_run(args):
         meta_lines.append(f"**待人工核对** {fin['starved']} 处段落时长与字数明显不匹配，"
                           "疑似仍有未转出的内容，请对照字幕回听。\n")
     meta_lines.append("**注意**　语音识别对专有名词与专业术语存在同音误识，"
-                      "已按术语表统一校正可确定者，不能确定者保留原样。"
+                      f"已按术语表统一校正可确定者（其中拼音级纠错 {len(pyhits)} 处，"
+                      "逐条列在质检报告的 pinyin_fixes 里），不能确定者保留原样。"
                       "段内标点由词间停顿与连接词推定，仅供阅读参考，不代表讲者原意停顿。\n")
 
     n_para, nchar, n_cue = render(rows, dur, outdir, title, terms, "\n".join(meta_lines))
 
     json.dump({"audit": {k: v for k, v in rep.items() if k != "hallu"},
-               "final": fin, "terms_hits": hits,
+               "final": fin, "terms_hits": hits, "pinyin_fixes": pyhits,
                "hallucinations": rep["hallu"], "breaks": breaks},
               open(os.path.join(outdir, "质检报告.json"), "w", encoding="utf-8"),
               ensure_ascii=False, indent=1)
