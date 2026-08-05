@@ -2,6 +2,7 @@
 import argparse
 import json
 import os
+import sys
 
 from . import hms, log
 from .audio import Loudness, ensure_cuda_libs, prepare_audio
@@ -29,8 +30,7 @@ PROFILES = {
 
 # ---------------------------------------------------------------- 主流程
 
-def main(argv=None):
-    ap = argparse.ArgumentParser(description="长音频转录流水线（以不遗漏为目标）")
+def add_run_args(ap):
     ap.add_argument("audio")
     ap.add_argument("-o", "--outdir", default=None, help="输出目录，默认与音频同名")
     ap.add_argument("--profile", default="meeting", choices=list(PROFILES))
@@ -41,8 +41,32 @@ def main(argv=None):
     ap.add_argument("--device", default="cuda", choices=["cuda", "cpu", "auto"])
     ap.add_argument("--compute", default=None, help="覆盖档位里的 compute_type")
     ap.add_argument("--language", default="zh")
-    args = ap.parse_args(argv)
+    return ap
 
+
+# 已实现的子命令。加新子命令时必须同步这里，否则它会被当成音频文件名。
+SUBCOMMANDS = ("run",)
+
+
+def main(argv=None):
+    argv = list(sys.argv[1:] if argv is None else argv)
+    # 不写子命令时默认走 run，保证 `python3 transcribe.py 录音.mp3` 行为不变。
+    # 判据不能用 startswith("-")，否则 `-o 输出目录 录音.mp3` 这种写法会漏掉 run。
+    if argv and argv[0] not in SUBCOMMANDS and argv[0] not in ("-h", "--help"):
+        argv.insert(0, "run")
+
+    ap = argparse.ArgumentParser(prog="audio-transcribe",
+                                 description="长音频转录流水线（以不遗漏为目标）")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    add_run_args(sub.add_parser("run", help="转录音频"))
+    if not argv:
+        ap.print_help()
+        return 1
+    args = ap.parse_args(argv)
+    return cmd_run(args)
+
+
+def cmd_run(args):
     ensure_cuda_libs()
 
     src = os.path.abspath(args.audio)

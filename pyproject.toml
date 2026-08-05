@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "audio-transcribe"
+version = "0.2.0"
+description = "长音频转文档流水线，以不遗漏为目标，带覆盖率审计与字级 CER 评测"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+
+# 核心依赖必须纯 CPU 可装——ASR 后端走 extras，否则 CI 装不动。
+dependencies = [
+    "opencc-python-reimplemented>=0.1.7",
+    "pypinyin>=0.53",
+    "rapidfuzz>=3.9",
+    "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+whisper = ["faster-whisper>=1.1.0", "ctranslate2>=4.5,<5"]
+funasr = ["funasr>=1.1.0"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+audio-transcribe = "audio_transcribe.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["audio_transcribe*"]

@@ -1,9 +1,18 @@
-# 实测可用的版本（RTX 4060 Laptop 8GB / CUDA / Python 3.12）。
-# 装法见 README「环境」，注意 --user --break-system-packages。
-faster-whisper>=1.1.0
-ctranslate2>=4.5,<5
+# 依赖的真源是 pyproject.toml，这里只是给不想用 pip install -e . 的场景留个入口。
+#
+#   pip install -e ".[whisper]"        # 核心 + Whisper 后端（日常用这个）
+#   pip install -e ".[whisper,funasr]" # 再加中文专用第二引擎
+#   pip install -e ".[dev]"            # 只跑测试（纯 CPU，不装 ASR 后端）
+#
+# 核心依赖必须纯 CPU 可装，CI 才装得动。
 opencc-python-reimplemented>=0.1.7
+pypinyin>=0.53
+rapidfuzz>=3.9
 numpy>=1.24
 
-# 测试用（不跑测试可以不装）
+# ASR 后端（需要 GPU 才有实用速度）
+faster-whisper>=1.1.0
+ctranslate2>=4.5,<5
+
+# 测试
 pytest>=8.0
