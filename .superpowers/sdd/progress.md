@@ -24,3 +24,8 @@ Task 1 Step 7: 完成（GPU 空闲后补跑）——薄入口端到端通过，�
   22 段/610 字、覆盖 67.8%、有效语音 56.4%、34 条字幕、6 段/640 字
 Task 2 真机验证: audio-transcribe run 路径与 python3 transcribe.py 产出一致
 拼音纠错实测: 见 docs/measurements.md（证实价值 + 发现跨词边界危险，已锁死测试）
+Task 4:  complete (commit 9b6c4e1, goldset/eval 全链路实跑验证, 63 tests)
+Task 4b: complete (commit a5e25c2, manifest + AISHELL 获取脚本)
+Task 5:  complete (commit a5e25c2, CI 夹具 6 条, 78 tests)
+Task 12: 脚本已写，待跑（等 FunASR 下载完，避免抢 8GB 显存）
+Task 8:  FunASR 模型下载中（944MB，本机走代理约 1-2MB/s）
