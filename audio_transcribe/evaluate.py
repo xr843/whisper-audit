@@ -20,7 +20,13 @@ _cc = None
 
 
 def normalize(text):
-    """繁→简、全角→半角、数字统一、去标点空白。"""
+    """繁→简、全角→半角、数字统一、去标点空白。
+
+    数字统一是逐字符映射（str.translate），不是数值转换："25" 会变成
+    "二五" 而不是"二十五"。财税类语料里法规条款号、金额、税率常见，
+    同一个数用阿拉伯数字和中文数字两种记法写会被记成替换/增删错误——
+    这类噪声分不清是转录真错还是记法差异，读 cer/sub/dele 时需留意。
+    """
     global _cc
     if _cc is None:
         import opencc
@@ -50,6 +56,20 @@ def pinyin_key(text, loose=False):
 
 
 def score(ref, hyp):
+    """按字对齐 ref/hyp，返回一条结果的 n_ref/n_hyp/sub/dele/ins/cer/homo/near 等。
+
+    聚合多条结果时：必须先累加各条的 sub/dele/ins/n_ref，再用累加值重算
+    cer = (sub+dele+ins)/n_ref，不能对各条的 cer 字段取平均或加权平均
+    ——n_ref 为 0（参考文本为空、假设全是幻觉）时本函数按约定返回
+    cer=0.0（不是 nan），这条会把平均值直接拉偏。ins 字段不受此影响，
+    仍是可靠的幻觉计数。
+
+    sub/dele/ins 的切分基于 Levenshtein 最短编辑路径，同一对文本可能有
+    多条编辑距离相同的路径，算法只会返回其中一条，分类因此存在固有歧义。
+    典型例子是换位：'猫乙'→'乙猫' 两个字都还在输出里，却会被记成删一个
+    插一个（dele=1, ins=1, sub=0）。cer 总量不受影响，但本项目把删除率
+    单列当作"不遗漏"的直接度量，换位场景会让这个读数偏紧，不代表真实遗漏。
+    """
     from rapidfuzz.distance import Levenshtein
     ref, hyp = normalize(ref), normalize(hyp)
     ops = Levenshtein.editops(ref, hyp)
@@ -62,11 +82,18 @@ def score(ref, hyp):
         else:
             sub += 1
             a, b = ref[o.src_pos], hyp[o.dest_pos]
-            if pinyin_key(a) == pinyin_key(b):
+            # 守卫：lazy_pinyin(errors="ignore") 对转不出拼音的字符（拉丁字母、
+            # 数字、漏网标点）直接丢弃而非保留，两个这样的字符都会得到空元组
+            # ()，而 () == () 为真——不加守卫会把互不相关的非中文替换误判成
+            # 同音/近音。只有两侧都真正转出了拼音才允许判等。
+            ka, kb = pinyin_key(a), pinyin_key(b)
+            if ka and kb and ka == kb:
                 homo += 1
                 near += 1
-            elif pinyin_key(a, loose=True) == pinyin_key(b, loose=True):
-                near += 1
+            else:
+                la, lb = pinyin_key(a, loose=True), pinyin_key(b, loose=True)
+                if la and lb and la == lb:
+                    near += 1
     n = len(ref)
     return {"n_ref": n, "n_hyp": len(hyp), "sub": sub, "dele": dele, "ins": ins,
             "cer": (sub + dele + ins) / n if n else 0.0,

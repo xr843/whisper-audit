@@ -52,3 +52,20 @@ def test_perfect_match_scores_zero():
     r = E.score("完全一样的文本", "完全一样的文本")
     assert r["cer"] == 0.0
     assert r["homo_pct"] == 0.0
+
+
+def test_latin_substitution_is_not_counted_as_homophone():
+    """APP→ABC 是无关替换；两侧都转不出拼音时 pinyin_key 都返回空元组，
+    空元组彼此相等会被误判成同音，必须用守卫挡住（回归用例，Critical 1）。"""
+    r = E.score("这是APP的问题", "这是ABC的问题")
+    assert r["sub"] == 2
+    assert r["homo"] == 0
+    assert r["near"] == 0
+
+
+def test_mixed_chinese_latin_homophone_still_detected():
+    """中英混排时，中文部分的同音判定不能被同一条错误里的英文噪声连累。"""
+    r = E.score("旧账APP", "旧帐ABC")
+    assert r["sub"] == 3
+    assert r["homo"] == 1
+    assert r["near"] == 1
