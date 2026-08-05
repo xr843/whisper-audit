@@ -63,7 +63,7 @@ def test_real_termlist_does_not_touch_unrelated_text():
     这是拼音模糊匹配最大的风险（误伤正常文本）的护栏。
     """
     real_terms = json.loads(REAL_TERMS_PATH.read_text(encoding="utf-8"))
-    assert len(real_terms["terms"]) == 22
+    assert real_terms["terms"], "术语表不能为空，否则这条护栏形同虚设"
 
     daily_text = (
         "今天天气很好，我和朋友一起去公园散步，路上买了几个包子当早饭。"
@@ -75,3 +75,36 @@ def test_real_termlist_does_not_touch_unrelated_text():
     out, hits = T.pinyin_fix(daily_text, real_terms)
     assert out == daily_text
     assert hits == []
+
+
+def test_short_term_must_not_corrupt_correct_text_across_word_boundary():
+    """短术语跨词边界误匹配，会把本来正确的文本改坏。
+
+    2026-08-05 在 41,174 字真实转录上实测撞到：
+
+        原文  …大型活动场所的税务登记义务…      本来就是对的
+        误改  …大型活动场所得税务登记义务…      「所的税」被当成「所得税」的同音错
+
+    「所得税」这条术语单独存在时，扫描器会在「场所|的税务」的接缝上凑出
+    「所的税」并替换掉。真实语料里没出事，纯粹因为术语表里恰好还有更长的
+    「大型活动场所」，长词优先把这几个字先吃掉了——**是巧合，不是设计**。
+
+    这条测试锁住这个巧合：真实术语表必须始终能保住这句话不被改动。
+    """
+    real_terms = json.loads(REAL_TERMS_PATH.read_text(encoding="utf-8"))
+    src = "这一规定将大型活动场所的税务登记义务也纳入管理"
+    for loose in (False, True):
+        out, hits = T.pinyin_fix(src, real_terms, loose=loose)
+        assert out == src, f"loose={loose} 改坏了正确文本：{out}（{hits}）"
+
+
+def test_boundary_hazard_is_reproducible_without_the_longer_term():
+    """把上面那个巧合摘掉，证明危险是真实存在的，不是杞人忧天。
+
+    这条测试**故意断言坏行为**，作用是：一旦将来给 pinyin_fix 加了真正的
+    词边界保护，它会失败，提醒把上面那条护栏和文档一起更新。
+    """
+    src = "这一规定将大型活动场所的税务登记义务也纳入管理"
+    out, hits = T.pinyin_fix(src, {"terms": ["所得税"]}, loose=False)
+    assert out != src, "若这条开始通过，说明已有词边界保护，请更新文档与护栏"
+    assert hits[0]["from"] == "所的税"
