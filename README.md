@@ -1,22 +1,37 @@
 # audio-transcribe
 
 > **English summary.** A long-audio Chinese transcription pipeline built for
-> *completeness*, not for a single pass. Running Whisper once always drops
-> content — and worse, you never find out where. This pipeline cross-runs two
-> ASR passes, audits the timeline for gaps by measuring actual RMS loudness,
-> detects speech swallowed *inside* segments by character density, re-transcribes
-> only the problem spans, and scores character-level CER against a gold set you
-> build by fixing typos in its own output. Runs offline on a local GPU; audio
-> never leaves the machine.
-> The 「踩过的坑」 section below is the real value here — 16 findings, every one
-> measured on real recordings rather than reasoned from documentation.
+> *completeness*, not for a single pass. Running an ASR model once always drops
+> content — and worse, you never find out where. This pipeline audits the
+> timeline for gaps by measuring actual RMS loudness, detects speech swallowed
+> *inside* segments by character density, re-transcribes only the problem spans,
+> and ships its own character-level CER evaluation harness (gold sets, public
+> benchmarks, regression gates). Two engines: whisper large-v3 (robust default)
+> and FunASR Paraformer (`--engine funasr`) — the latter measured at
+> **2.06–2.44% CER on SpeechIO speech/lecture sets**, commercial-API territory,
+> with 6–10× fewer deletions. Runs offline on a local GPU; audio never leaves
+> the machine. Every default in this repo is backed by a measured number, and
+> `docs/measurements.md` keeps the receipts — including the conclusions that
+> got overturned along the way.
 >
 > `pip install -e ".[whisper]"` then `audio-transcribe run recording.mp3`.
 > Docs are in Chinese; the code and CLI are not.
 
 长音频转文档流水线。目标是**不遗漏**，不是"转一遍"。
 
-基于 faster-whisper large-v3 + 本机 GPU，离线运行，音频不出本机。
+双引擎（whisper large-v3 / FunASR Paraformer）+ 本机 GPU，离线运行，音频不出本机。
+每一个默认值背后都有实测数字，被推翻过的结论也留在档里。
+
+## 实测成绩（2026-08-06）
+
+| 语料 | 域 | 本流水线 | 参照 |
+|---|---|---|---|
+| SpeechIO ZH00004（场馆演讲） | 自发语音 | **2.06%**（`--engine funasr`） | 商用 API 同集约 1.5~3% |
+| SpeechIO ZH00005（在线讲课） | 自发语音 | **2.44%**（`--engine funasr`） | 同上 |
+| FLEURS cmn_hans test 全量 | 标准朗读 | 7.56%（whisper 默认档） | whisper 官方口径同量级 |
+| 长音频吞吐 | 生产工况 | 默认档 24.5x / fast 档 62x 实时 | RTX 4060 Laptop 8GB |
+
+字级 CER，评测口径与复现步骤见 [docs/measurements.md](docs/measurements.md)。
 
 ---
 
