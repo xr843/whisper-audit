@@ -29,3 +29,10 @@ audio-transcribe = "audio_transcribe.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["audio_transcribe*", "bench*"]
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    # jieba 内部用 pkg_resources，上游未修；不是本项目能改的
+    "ignore::DeprecationWarning:jieba._compat",
+    "ignore:Deprecated call to .pkg_resources.declare_namespace:DeprecationWarning",
+]
