@@ -22,7 +22,7 @@
 |---|---|---|---|
 | SpeechIO ZH00004（场馆演讲） | 自发语音 | **2.06%**（`--engine funasr`） | 商用 API 同集约 1.5~3% |
 | SpeechIO ZH00005（在线讲课） | 自发语音 | **2.44%**（`--engine funasr`） | 同上 |
-| FLEURS cmn_hans test 全量 | 标准朗读 | 7.56%（whisper 默认档） | whisper 官方口径同量级 |
+| FLEURS cmn_hans test 全量 | 标准朗读 | 4.45%（whisper 默认档） | 官方报告 whisper 同集约 4.1% |
 | 长音频吞吐 | 生产工况 | 默认档 24.5x / fast 档 62x 实时 | RTX 4060 Laptop 8GB |
 | 纯 CPU 吞吐 | 无显卡场景 | 3.2x 实时（`--engine funasr --device cpu`） | 普通笔记本即可 |
 
@@ -134,7 +134,7 @@ key 只从环境变量 `AUDIO_TRANSCRIBE_LLM_KEY` 读。
 
 ```bash
 pip install -e ".[dev]"       # 纯 CPU 核心依赖，不装 ASR 后端
-python3 -m pytest tests/ -q   # 144 tests + 1 xfail，秒级，无需 GPU/音频
+python3 -m pytest tests/ -q   # 148 tests + 1 xfail，秒级，无需 GPU/音频
 ```
 
 ```

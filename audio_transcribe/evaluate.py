@@ -8,9 +8,20 @@
   同音/近音率 —— 替换错误里拼音相同或相近的占比，直接给出拼音纠错与
                  LLM 同音校订的天花板，是后续所有取舍的依据
 """
+import re
 import unicodedata
 
 _PUNCT = set("，。！？、；：“”‘’（）《》〈〉【】—…·,.!?;:\"'()<>[]{}-~")
+
+# 括号内的纯外文注释：书面文本约定，说话人不会读出来。
+# 实测 FLEURS 中文测试集 945 条里 129 条含这类注释（共 1,770 字符，
+# 占参考总字数 5%），典型如：
+#     参考  特朗普与土耳其总统雷杰普·塔伊普·埃尔多安（Recep Tayyip Erdoğan）通话后…
+#     音频  只念了中文译名，Latin 部分根本没说
+# 不剔除的话，任何 ASR 都会为这段凭空吃满删除错——whisper large-v3 的
+# FLEURS CER 因此从 3.77% 被抬到 7.56%（近两倍），且各引擎受损程度不同，
+# 对比会失真。这是参考文本的书面约定，不是模型的错。
+_FOREIGN_GLOSS = re.compile(r"[（(]\s*[^（()）]*?[A-Za-zÀ-ÿĀ-ſ][^（()）]*?\s*[)）]")
 # 0 映射为「零」而非「〇」，且既有的「〇」也归一为「零」——
 # ASR 引擎输出汉字数字时几乎都写「零」，映射到「〇」会让
 # 「二零一九」对「2019」平白多出一个替换错，系统性偏袒
@@ -38,6 +49,17 @@ def normalize(text):
     t = unicodedata.normalize("NFKC", _cc.convert(text))
     t = t.translate(_DIGITS)
     return "".join(c for c in t if c not in _PUNCT and not c.isspace())
+
+
+def strip_foreign_gloss(text):
+    """剔除括号内的纯外文注释（含至少一个拉丁字母的括号段）。
+
+    **只该用在参考文本上，且只在公开基准这种「参考取自书面文本」的场景**。
+    自建金标是从 ASR 输出改错字来的，不会有这类注释，用不上也不该用。
+
+    含中文的括号（如「（简称甲方）」）不动——那是说话人可能真读出来的。
+    """
+    return _FOREIGN_GLOSS.sub("", text)
 
 
 def pinyin_key(text, loose=False):

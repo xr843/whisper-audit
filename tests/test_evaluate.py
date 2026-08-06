@@ -79,3 +79,22 @@ def test_hanzi_digit_styles_are_equivalent():
     """
     assert E.score("2019年", "二零一九年")["cer"] == 0.0
     assert E.score("二〇一九", "二零一九")["cer"] == 0.0
+
+
+def test_strip_foreign_gloss_removes_written_only_annotations():
+    """括号内的纯外文注释是书面约定，说话人不会读——参考里留着它，
+    任何 ASR 都会凭空吃满删除错。实测 FLEURS 上这一项让 whisper 的
+    CER 从 3.77% 虚高到 7.56%（近两倍），且各引擎受损不等，对比失真。"""
+    ref = "特朗普与土耳其总统埃尔多安（Recep Tayyip Erdoğan）通话后发表了声明"
+    assert E.strip_foreign_gloss(ref) == "特朗普与土耳其总统埃尔多安通话后发表了声明"
+
+
+def test_strip_foreign_gloss_keeps_chinese_parentheses():
+    """含中文的括号不动——那是说话人可能真读出来的内容。"""
+    for keep in ("甲方（以下简称甲方）应当", "会议（第三次）已召开"):
+        assert E.strip_foreign_gloss(keep) == keep
+
+
+def test_strip_foreign_gloss_is_a_noop_without_glosses():
+    plain = "这段文本没有任何括号注释"
+    assert E.strip_foreign_gloss(plain) == plain

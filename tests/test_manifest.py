@@ -60,3 +60,14 @@ def test_eval_manifest_keeps_per_item_hypotheses():
     assert rep["hyps"] == [{"audio": "a.wav", "text": "甲乙", "hyp": "甲丙"}]
     lean = M.eval_manifest(items, lambda p: "甲丙", keep_hyps=False)
     assert "hyps" not in lean
+
+
+def test_eval_manifest_cleans_reference_glosses_by_default():
+    """公开基准的参考多取自书面文本，含说话人不会读的外文注释。"""
+    items = [{"audio": "a.wav", "text": "总统埃尔多安（Recep Erdoğan）发表声明"}]
+    rep = M.eval_manifest(items, lambda p: "总统埃尔多安发表声明")
+    assert rep["cer"] == 0.0, "注释未剔除会凭空产生删除错"
+    assert rep["ref_cleaned"] > 0
+
+    raw = M.eval_manifest(items, lambda p: "总统埃尔多安发表声明", clean_ref=False)
+    assert raw["dele"] > 0 and raw["ref_cleaned"] == 0
