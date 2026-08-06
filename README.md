@@ -464,7 +464,19 @@ pip install --user --break-system-packages -e ".[whisper]"
 核心依赖是纯 CPU 可装的（opencc / pypinyin / rapidfuzz / numpy），
 ASR 后端才需要 GPU——所以 `pip install -e ".[dev]"` 就能跑全部测试，CI 也是这么装的。
 
-没有 N 卡时 `--device cpu`（会自动退到 int8，很慢，只适合短音频验证流程）。
+### 没有 GPU 怎么用
+
+**推荐 `--engine funasr --device cpu`：纯 CPU 实测 3.2x 实时**（5 分钟音频 94 秒转完，
+1 小时约 19 分钟）——Paraformer 是非自回归架构，CPU 是它的强项，质量就是上表
+SpeechIO 2% 级的那个引擎：
+
+```bash
+pip install --user -e ".[funasr]"
+audio-transcribe run 录音.mp3 --engine funasr --device cpu
+```
+
+whisper 系的 `--device cpu` 只适合拿 `--model tiny` 验证流程——large-v3 在 CPU 上
+慢于实时数倍，不实用。注意 funasr 路线的适用边界仍同上文：标准普通话内容。
 
 ### 代码结构
 
