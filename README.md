@@ -29,7 +29,7 @@ python3 transcribe.py 录音.mp3 --profile meeting --terms examples/terms/financ
 # 单人讲授、音质好 —— 单路 + 补转，快一半
 python3 transcribe.py 录音.mp3 --profile lecture
 
-# 只求快（专业术语多的内容不建议）
+# 只求快 —— large-v3-turbo，质量代价实测 0.9pp，长音频吞吐 2.5 倍（62x 实时）
 python3 transcribe.py 录音.mp3 --profile fast
 ```
 
@@ -223,10 +223,15 @@ Whisper 训练数据里有海量网络视频字幕，所以无声学证据时它
 A  fp16 / batch8  / beam5   18.1x   ← 基准
 B  int8 / batch8  / beam5   16.6x   ← 比 A 慢 8%！
 C  int8 / batch16 / beam5   22.5x   ← +25%
-D  int8 / batch16 / beam1   25.2x   ← +39%（质量有代价）
+D  int8 / batch16 / beam1   25.2x   ← +39%
 ```
 
 因果链是：int8 省显存 → 腾出空间把 batch 从 8 开到 16 → 才快。单纯换 int8 反而慢（量化/反量化的开销吃掉了带宽收益）。
+
+> 2026-08-06 补：这里曾给 beam1 标注「质量有代价」——**实测证伪**。FLEURS 945 条
+> beam1=7.57% vs beam5=7.56%，完全打平；最困难的慢速歌唱域 beam1 反而好 20pp
+> （beam search 更容易搜到「整段无语音」的路径直接放弃）。beam5 作为默认值
+> 的地位存疑，等目标域金标定夺，见 docs/measurements.md。
 
 ### 9. batched 与非 batched 差 4.2 倍，且非 batched 的 GPU 在空转
 
