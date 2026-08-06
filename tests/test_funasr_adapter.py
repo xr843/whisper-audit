@@ -57,3 +57,22 @@ def test_confidence_defaults_do_not_trip_hallucination_filter():
 def test_empty_and_missing_fields_are_tolerated():
     assert to_segments([{"key": "x", "text": "", "timestamp": []}]) == []
     assert to_segments([{"key": "x"}]) == []
+
+
+def test_duration_survives_float32_wav(tmp_path):
+    """FLEURS 等公开集是 float32 WAV（format 3），标准库 wave 直接抛错。
+    实测在跑 FLEURS 评测时撞出：适配器读时长那一步崩掉整个评测。"""
+    import numpy as np
+    import soundfile
+
+    from audio_transcribe.engines.funasr import _duration
+    p = tmp_path / "f32.wav"
+    soundfile.write(str(p), np.zeros(16000, dtype="float32"), 16000, subtype="FLOAT")
+    d = _duration(str(p), [])
+    assert abs(d - 1.0) < 0.01
+
+
+def test_duration_falls_back_to_last_segment_end(tmp_path):
+    from audio_transcribe.engines.funasr import _duration
+    d = _duration(str(tmp_path / "不存在.wav"), [{"end": 12.5}])
+    assert d == 12.5

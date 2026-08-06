@@ -74,14 +74,21 @@ class FunASREngine(Engine):
         self._model = None
 
     def transcribe(self, wav, **_):
-        import wave as _wave
-
         from funasr import AutoModel
         if self._model is None:
             self._model = AutoModel(model=self.model_dir, device=self.device,
                                     disable_update=True)
         raw = self._model.generate(input=wav, batch_size_s=300)
         segs = to_segments(raw)
-        with _wave.open(wav, "rb") as f:
-            dur = f.getnframes() / f.getframerate()
-        return {"duration": dur, "segments": segs}
+        return {"duration": _duration(wav, segs), "segments": segs}
+
+
+def _duration(wav, segs):
+    """音频时长。标准库 wave 只认 int16 PCM，FLEURS 这类 float32 WAV
+    （format 3）会直接抛错——用 soundfile（funasr 依赖链自带）兜住，
+    再不行退化到最后一段的结束时间。"""
+    try:
+        import soundfile
+        return float(soundfile.info(wav).duration)
+    except Exception:
+        return segs[-1]["end"] if segs else 0.0
