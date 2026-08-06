@@ -162,8 +162,8 @@ pinyin_fix("这一规定将大型活动场所的税务登记义务也纳入管�
 
 两条测试盯着这个坑：
 - `test_short_term_must_not_corrupt_correct_text_across_word_boundary` 锁住真实术语表必须保住那句话
-- `test_boundary_hazard_is_reproducible_without_the_longer_term` 故意断言坏行为，
-  将来真加了词边界保护它会失败，提醒同步更新文档
+- `test_boundary_hazard_without_the_longer_term`（xfail(strict=True) 包住期望行为，
+  修好后转 XPASS 变红，提醒同步更新文档）
 
 **使用建议**：往 `terms` 加短词（2–3 字）时，必须连带把包含它的长词一起加进去。
 加完拿真实转录跑一遍看改了什么——不要只看改动条数，要看每一处的上下文。
@@ -260,14 +260,11 @@ pinyin_fix("这一规定将大型活动场所的税务登记义务也纳入管�
 | 改用完整模型 id | ModelScope 对 `seg_dict` 返回 **404**，且注册表仍认不出该 id |
 | 改用 `iic/SenseVoiceSmall` | 下载超时（本机走代理，~1MB/s，模型约 900MB） |
 
-funasr 1.4.1 的注册表里有 `SeacoParaformer`、`Paraformer`、`SenseVoiceSmall` 这些**类名**，
-但 `paraformer-zh` 这类**模型别名**解析不到类——像是 1.4.x 重构注册机制后的别名映射问题。
-下次可先试 `pip install funasr==1.1.x`（模型已在 `~/.cache/modelscope`，不必重下）。
+funasr 的注册表里有 `SeacoParaformer` 这些**类名**，但 `paraformer-zh` 这类
+**模型别名**在 1.1.x 和 1.4.x 都解析不到类——绕开别名、直接传本地目录即可。
 
-**当前处置**：`meeting` 档保持 whisper 双路不变，无任何退化。
-Task 1 建立的 Engine 抽象已经就位，接入第二引擎只需实现一个 `transcribe()` 与一个
-纯函数适配器——**但适配器必须等拿到真实输出格式再写**。
-按推测的字段名写适配器再让测试去迁就它，等于给自己造一个看起来绿的假象。
+当时坚持「适配器必须等拿到真实输出格式再写」是对的：真实格式（逐字毫秒时间戳）
+和计划里按文档推测的形状（sentence_info 句级）完全不同，照推测写会全错。
 
 ## 合并策略：逐桶二选一 vs 真并集
 
