@@ -9,8 +9,8 @@
 > benchmarks, regression gates). Two engines: whisper large-v3 (robust default)
 > and FunASR Paraformer (`--engine funasr`) — the latter measured at
 > **2.06–2.44% CER on SpeechIO speech/lecture sets**, commercial-API territory,
-> with 6–10× fewer deletions. Runs offline on a local GPU; audio never leaves
-> the machine. Every default in this repo is backed by a measured number, and
+> with 6–10× fewer deletions. Runs offline — on a local GPU, or **CPU-only via
+> the Paraformer engine (3.2× realtime measured)**; audio never leaves the machine. Every default in this repo is backed by a measured number, and
 > `docs/measurements.md` keeps the receipts — including the conclusions that
 > got overturned along the way.
 >
@@ -19,8 +19,8 @@
 
 长音频转文档流水线。目标是**不遗漏**，不是"转一遍"。
 
-双引擎（whisper large-v3 / FunASR Paraformer）+ 本机 GPU，离线运行，音频不出本机。
-每一个默认值背后都有实测数字，被推翻过的结论也留在档里。
+双引擎（whisper large-v3 / FunASR Paraformer），本机 GPU 或**纯 CPU**（3.2x 实时）
+离线运行，音频不出本机。每一个默认值背后都有实测数字，被推翻过的结论也留在档里。
 
 ## 实测成绩（2026-08-06）
 
@@ -30,6 +30,7 @@
 | SpeechIO ZH00005（在线讲课） | 自发语音 | **2.44%**（`--engine funasr`） | 同上 |
 | FLEURS cmn_hans test 全量 | 标准朗读 | 7.56%（whisper 默认档） | whisper 官方口径同量级 |
 | 长音频吞吐 | 生产工况 | 默认档 24.5x / fast 档 62x 实时 | RTX 4060 Laptop 8GB |
+| 纯 CPU 吞吐 | 无显卡场景 | 3.2x 实时（`--engine funasr --device cpu`） | 普通笔记本即可 |
 
 字级 CER，评测口径与复现步骤见 [docs/measurements.md](docs/measurements.md)。
 
@@ -356,9 +357,10 @@ pass1 报 97.3%，成品字幕的时间并集只有 90.0%——**给读者看的
 
 ### 14. ⚠️ 术语命中数要在替换**之前**统计
 
-`terms_hits()` 第一版拿最终正文去数，结果当时那张 54 条的表只命中 1 条——
+`terms_hits()` 第一版拿最终正文去数，几乎全部 0 命中——
 因为源词早就被替换光了。在原始（仅繁简转换后）文本上统计才有意义：
-实测 **51 条里 35 条命中、16 条从未命中**，那 12 条是白写的。
+当时那张表实测 **35 条命中、16 条从未命中**——近三分之一是白写的
+（公开示例表已精简，见「术语表」一节）。
 这件事 README 过去教人手工做，现在每次跑完自动报。
 
 ### 15. 不要自动折叠「紧邻重复」
