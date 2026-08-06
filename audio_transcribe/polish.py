@@ -41,11 +41,17 @@ def constrain(before, after, loose=False):
 
 
 def _chunks(text, size):
-    """按句末标点切，避免把一句话劈成两块。"""
+    """按句末标点切，避免把一句话劈成两块。
+
+    带硬上限（1.5×size）：ASR 稿常常整段没有句末标点，只按标点切会把
+    两万字灌成一整块——请求超限不说，LLM 对超长块「逐字等长返回」的
+    达成率会跌到几乎为零，整个功能退化成空转。
+    """
+    hard = int(size * 1.5)
     out, cur = [], ""
     for ch in text:
         cur += ch
-        if len(cur) >= size and ch in "。！？":
+        if (len(cur) >= size and ch in "。！？") or len(cur) >= hard:
             out.append(cur)
             cur = ""
     if cur:
@@ -79,13 +85,23 @@ def polish(text, *, base_url, model, api_key, chunk=1200, dry_run=False,
 
     out = []
     for p in parts:
+        # 发送去掉首尾空白的版本，返回后再拼回去。_call 会 strip LLM 的包装
+        # 空白，如果这里不对齐口径，行首/行尾空白会让长度校验必然失败，
+        # 整块被静默拒绝——接受率被压低还查不出原因。
+        core = p.strip()
+        lead = p[:len(p) - len(p.lstrip())]
+        tail = p[len(p.rstrip()):]
+        if not core:
+            out.append(p)
+            continue
         try:
-            got = _call(base_url, model, api_key, p)
+            got = _call(base_url, model, api_key, core)
         except (urllib.error.URLError, KeyError, TimeoutError):
             rep["failed"] += 1          # 网络失败保留原文，不中断整体流程
             out.append(p)
             continue
-        fixed, r = constrain(p, got, loose)
+        fixed, r = constrain(core, got, loose)
+        fixed = lead + fixed + tail
         if r["reason"] == "length":
             rep["length_rejected"] += 1
         rep["accepted"] += r["accepted"]

@@ -3,6 +3,8 @@
 重点不在「能不能改」，而在「改了有没有如实记账」——
 凡是自动改正文的逻辑，改动必须可追溯，否则出问题时无从查起。
 """
+import pytest
+
 from audio_transcribe import merge as M
 
 TERMS = {"terms": ["财税管理"], "fixes": []}
@@ -97,18 +99,20 @@ def test_pinyin_fix_is_off_by_default():
     assert hits == []
 
 
-def test_real_homophone_words_are_corrupted_when_enabled():
-    """开启后的已知代价，用测试固化，免得被当成「已经安全了」。
-
-    这条**故意断言坏行为**：将来若加了分词/上下文校验能分辨这两个词，
-    它会失败，提醒把文档里的警告一起更新。
-    """
+@pytest.mark.xfail(
+    strict=True,
+    reason="已知缺陷：无调拼音把「节余/结余」「空值/控制」这类真实存在、含义不同的词"
+           "判成同一个。修好（如引入分词/上下文校验）后此测试转 XPASS 变红，"
+           "提醒同步更新文档与默认开关。")
+def test_real_words_survive_pinyin_fix_when_enabled():
+    """开启拼音纠错后，真实存在的词不该被改成同音的另一个词——
+    这是**期望行为**；当前实现做不到，故标 xfail 让欠债在 CI 输出里可见。"""
     from audio_transcribe.terms import pinyin_fix
     terms = {"terms": ["结余分配", "内部控制"]}
-    for src, bad in (("本年度完成节余分配后转入下年度", "结余分配"),
-                     ("那条内部空值字段没有清理干净", "内部控制")):
+    for src in ("本年度完成节余分配后转入下年度", "那条内部空值字段没有清理干净"):
         out, hits = pinyin_fix(src, terms)
-        assert bad in out and hits, f"预期的已知缺陷未复现：{src} -> {out}"
+        assert out == src
+        assert hits == []
 
 
 def test_hits_are_revalidated_against_the_final_text():

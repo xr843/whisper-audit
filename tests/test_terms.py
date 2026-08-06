@@ -98,13 +98,14 @@ def test_short_term_must_not_corrupt_correct_text_across_word_boundary():
         assert out == src, f"loose={loose} 改坏了正确文本：{out}（{hits}）"
 
 
-def test_boundary_hazard_is_reproducible_without_the_longer_term():
-    """把上面那个巧合摘掉，证明危险是真实存在的，不是杞人忧天。
-
-    这条测试**故意断言坏行为**，作用是：一旦将来给 pinyin_fix 加了真正的
-    词边界保护，它会失败，提醒把上面那条护栏和文档一起更新。
-    """
+@pytest.mark.xfail(
+    strict=True,
+    reason="已知缺陷：pinyin_fix 无词边界概念，会在「场所|的税务」的接缝上凑出"
+           "「所的税」并替换。修好后此测试转 XPASS 变红，提醒同步更新文档与护栏。")
+def test_boundary_hazard_without_the_longer_term():
+    """把「术语表里恰好有更长词」这个巧合摘掉后，正确文本必须保持不变——
+    这是**期望行为**；当前实现做不到，故标 xfail 让欠债在 CI 输出里可见。"""
     src = "这一规定将大型活动场所的税务登记义务也纳入管理"
     out, hits = T.pinyin_fix(src, {"terms": ["所得税"]}, loose=False)
-    assert out != src, "若这条开始通过，说明已有词边界保护，请更新文档与护栏"
-    assert hits[0]["from"] == "所的税"
+    assert out == src
+    assert hits == []

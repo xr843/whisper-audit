@@ -19,7 +19,7 @@ def transcribe_pass(wav, out_json, chunk_length, batch, beam, compute="float16",
 
     开 word_timestamps：段级时间戳被 VAD 拉得很宽（最长一段 296 秒），
     拿它做字幕和段内标点都不成立，必须要词级的。"""
-    if os.path.exists(out_json):
+    if out_json and os.path.exists(out_json):
         log(f"复用已有 {os.path.basename(out_json)}")
         return json.load(open(out_json, encoding="utf-8"))
 
@@ -74,7 +74,8 @@ def transcribe_pass(wav, out_json, chunk_length, batch, beam, compute="float16",
     log(f"  完成 {len(rows)} 段 / {sum(len(r['text']) for r in rows):,} 字 / "
         f"{el/60:.1f}min / {info.duration/el:.1f}x")
     d = {"duration": info.duration, "segments": rows}
-    json.dump(d, open(out_json, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+    if out_json:
+        json.dump(d, open(out_json, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     return d
 
 
@@ -85,7 +86,7 @@ def repatch(wav, spans, out_json, pad=6.0, model_name="large-v3", device="cuda",
     """只对问题区段重转。关 VAD（它已经判错一次了）、抬高 no_speech 门槛、给足上下文。"""
     if not spans:
         return []
-    if os.path.exists(out_json):
+    if out_json and os.path.exists(out_json):
         log(f"复用已有 {os.path.basename(out_json)}")
         return json.load(open(out_json, encoding="utf-8"))
     from faster_whisper import WhisperModel
