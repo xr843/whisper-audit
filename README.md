@@ -1,26 +1,20 @@
 # audio-transcribe
 
 > **English summary.** A long-audio Chinese transcription pipeline built for
-> *completeness*, not for a single pass. Running an ASR model once always drops
-> content — and worse, you never find out where. This pipeline audits the
-> timeline for gaps by measuring actual RMS loudness, detects speech swallowed
-> *inside* segments by character density, re-transcribes only the problem spans,
-> and ships its own character-level CER evaluation harness (gold sets, public
-> benchmarks, regression gates). Two engines: whisper large-v3 (robust default)
-> and FunASR Paraformer (`--engine funasr`) — the latter measured at
-> **2.06–2.44% CER on SpeechIO speech/lecture sets**, commercial-API territory,
-> with 6–10× fewer deletions. Runs offline — on a local GPU, or **CPU-only via
-> the Paraformer engine (3.2× realtime measured)**; audio never leaves the machine. Every default in this repo is backed by a measured number, and
-> `docs/measurements.md` keeps the receipts — including the conclusions that
-> got overturned along the way.
+> *completeness*: it audits the timeline for coverage gaps by measuring actual
+> loudness, detects speech swallowed *inside* segments, re-transcribes only the
+> problem spans, and ships its own character-level CER evaluation harness.
+> Two engines — whisper large-v3 (robust default) and FunASR Paraformer
+> (**2.06–2.44% CER on SpeechIO sets**, commercial-API territory). Runs offline
+> on a local GPU or **CPU-only (3.2× realtime)**; audio never leaves the machine.
+> Every default is backed by a measured number; `docs/` keeps the receipts.
 >
 > `pip install -e ".[whisper]"` then `audio-transcribe run recording.mp3`.
 > Docs are in Chinese; the code and CLI are not.
 
-长音频转文档流水线。目标是**不遗漏**，不是"转一遍"。
-
-双引擎（whisper large-v3 / FunASR Paraformer），本机 GPU 或**纯 CPU**（3.2x 实时）
-离线运行，音频不出本机。每一个默认值背后都有实测数字，被推翻过的结论也留在档里。
+中文长音频 → 文稿/字幕。目标是**不遗漏**，不是「转一遍」：
+自动审计漏转、定点补转、并给你一把可复现的正确率尺子。
+双引擎，本机 GPU 或**纯 CPU** 离线运行，音频不出本机。
 
 ## 实测成绩（2026-08-06）
 
@@ -32,461 +26,116 @@
 | 长音频吞吐 | 生产工况 | 默认档 24.5x / fast 档 62x 实时 | RTX 4060 Laptop 8GB |
 | 纯 CPU 吞吐 | 无显卡场景 | 3.2x 实时（`--engine funasr --device cpu`） | 普通笔记本即可 |
 
-字级 CER，评测口径与复现步骤见 [docs/measurements.md](docs/measurements.md)。
+字级 CER。口径、复现步骤与所有开关的判定依据见 [docs/measurements.md](docs/measurements.md)。
 
----
+## 安装
+
+```bash
+git clone https://github.com/xr843/audio-transcribe && cd audio-transcribe
+pip install -e ".[whisper]"          # whisper 引擎；两个都要装 ".[whisper,funasr]"
+sudo apt install ffmpeg              # 系统依赖，pip 装不了；macOS: brew install ffmpeg
+```
+
+模型首次运行自动下载（large-v3 约 2.9GB）。mp3 / m4a / wav 等常见格式都支持
+（ffmpeg 统一转 16kHz 单声道）。
 
 ## 用法
 
 ```bash
-# 多人会议 / 口音重 / 内容重要 —— 双路交叉，最全（默认）
-python3 transcribe.py 录音.mp3 --profile meeting --terms examples/terms/finance-lecture.json
+# 标准普通话（演讲/讲课/会议）—— 质量最高且快：CER 2% 级、删除少 6~10 倍
+audio-transcribe run 录音.mp3 --engine funasr
 
-# 单人讲授、音质好 —— 单路 + 补转，快一半
-python3 transcribe.py 录音.mp3 --profile lecture
+# 口音重 / 内容复杂 / 拿不准 —— 默认档：whisper 双路交叉 + 审计补转，最全
+audio-transcribe run 录音.mp3
 
-# 只求快 —— large-v3-turbo，质量代价实测 0.9pp，长音频吞吐 2.5 倍（62x 实时）
-python3 transcribe.py 录音.mp3 --profile fast
+# 单人讲授、音质好 —— 单路，快一半
+audio-transcribe run 录音.mp3 --profile lecture
 
-# 标准普通话内容（演讲/讲课/会议）—— 商用系引擎，SpeechIO 实测 CER 2.06~2.44%
-# （whisper 系同语料 4.2~8.7%），删除少 6~10 倍，速度更快
-python3 transcribe.py 录音.mp3 --engine funasr
+# 赶时间 —— turbo 引擎 62x 实时，质量代价实测仅 0.9pp
+audio-transcribe run 录音.mp3 --profile fast
 ```
 
-**引擎怎么选**：标准普通话、录音干净 → `--engine funasr`（质量速度双优）；
-口音重、内容类型未知、慢速歌唱歌唱 → 默认 whisper（funasr 在慢速歌唱域会崩，
-口音域未实测；数据见 [docs/measurements.md](docs/measurements.md)）。
+`python3 transcribe.py 录音.mp3` 与装包后的命令等价。
+无显卡：`--engine funasr --device cpu`（3.2x 实时）。
+其他参数：`--terms 术语表.json`、`--keep-break`（不剔除中场休息）、
+`--model`、`--device`、`--language`、`--title`、`-o`，详见 `--help`。
 
-其他参数：`--model`（默认 large-v3）、`--device cuda|cpu`、`--compute`（覆盖档位量化）、
-`--language`（默认 zh）、`--keep-break`（不剔除休息段）、`--title`、`-o`。
+**引擎一句话**：清晰普通话 → `funasr`；口音重、类型未知、歌唱类 → 默认 whisper
+（funasr 在慢速歌唱域会崩，方言重口音未实测）。
 
-**两个会自动改正文的功能，默认都关着**，开之前请先读 [docs/measurements.md](docs/measurements.md)：
+### 输出
 
-| 参数 | 作用 | 为什么默认关 |
-|---|---|---|
-| `--pinyin-fix` | 拼音级术语纠错 | 无调拼音会把两个真实存在、含义不同的词判成同一个（节余/结余、空值/控制） |
-| `--loose-pinyin` | 上者再开近音归并 | 碰撞面更大 |
-| `--polish` | LLM 同音校订 | **正文会发往你指定的 endpoint**；受拼音硬约束，只放行同音替换 |
-
-`--polish` 配套：`--llm-base-url`（OpenAI 兼容）、`--llm-model`、`--polish-dry-run`
-（只打印将发送什么，不发请求）。API key 只从环境变量 `AUDIO_TRANSCRIBE_LLM_KEY` 读，
-不接受命令行参数——那会落进 shell 历史。
-
-三者**都没有 CER 证据说明净收益为正**，这是它们默认关闭的根本原因，不是成熟度问题。
-
-跑测试（不需要 GPU、不需要音频，几秒钟）：
-
-```bash
-pip install -e ".[dev]"      # 只装纯 CPU 的核心依赖，不装 ASR 后端
-python3 -m pytest tests/ -q
-```
-
-输出（默认在音频同目录的 `<名称>_转录/`）：
+默认写到音频同目录的 `<名称>_转录/`：
 
 | 文件 | 用途 |
 |---|---|
-| `*_全文转录.md` | 主文档，带时间戳分段 |
-| `*_全文转录.txt` | 纯文本 |
-| `*_字幕.srt` | 字幕，按词级时间戳切分，配原音频逐句回听核对 |
-| `质检报告.json` | 覆盖率、空洞、幻觉清单、术语命中数——**出稿前该看的东西** |
-| `.work/` | 中间结果，重跑时自动复用（改参数重跑前先删） |
+| `*_全文转录.md` / `.txt` | 正文，时间戳分段、自动标点 |
+| `*_字幕.srt` | 词级时间戳切分，配原音频逐句回听核对 |
+| `质检报告.json` | 覆盖率、漏转区段、幻觉清单、改动记账——**出稿前看一眼** |
+| `.work/` | 中间结果，重跑自动复用（改参数前先删） |
 
-参考速度：本机 RTX 4060 Laptop (8GB)，3 小时 39 分**讲座**录音（语音密集），
-meeting 档约 50 分钟（两路 20+31 分钟），lecture 档约 20 分钟。
+日志末尾的「终审」行报告合并稿的实际覆盖率与残余可疑段。
 
-> 这个数和 `bench/throughput.py` 报的 ~24x 不是一回事，别混着看。基准脚本用的是
-> 一段静音很多的照稿朗读音频，VAD 砍掉近半，所以「实时倍数」虚高——它只用来
-> **对同一段音频做回归比较**，不能拿来预估你那份录音要跑多久。
-> 讲座类语音密集的录音，按上面这行的实际观测估算。
-
----
-
-## 为什么不是一行 API 调用
-
-单跑一遍 Whisper 一定会漏，而且**漏在哪你不会知道**。一份 3.65 小时的真实讲座录音实测：
-
-```
-粗粒度单路(chunk=30s)  41,174 字   在 218 个 30 秒窗口比细粒度多 4,016 字
-细粒度单路(chunk=10s)  38,950 字   在  89 个 30 秒窗口比粗粒度多 1,792 字
-                                   ↑ 两路互补，各有各的漏，谁也不能替代谁
-合并去重后             42,588 字
-```
-
-> 这组数字 2026-08-05 重算过。旧版把一条 segment 在它跨过的**每个**窗口都整段计数，
-> 长段被反复计入，细粒度那一路的净贡献被高估了约 2.8 倍（曾写作 5,004 字）。
-> 按时间重叠比例摊回窗口后，细粒度净贡献约 1,792 字，占全文 4%——
-> 仍然有效，但要用 +31 分钟换。**修好段内饥饿检测（坑 11）之后应当重测这个权衡**，
-> 单路 + 审计 + 补转很可能已经覆盖其中大部分。
-
-单跑一路会丢掉的实例：
-
-- **整段 47 秒的讲师上台交接**被 VAD 判成静音跳过
-- **会计法第 25 条完整条文**被幻觉"请不吝点赞订阅…"整段顶替
-- **现金箱管理规定**（"应当指定三人管理、开启时三人同时在场、当场清点登记签字"）——粗粒度那 30 秒只转出一句
-
----
-
-## 踩过的坑（全部实测，不是理论）
-
-### 1. ⚠️ 不要用 initial_prompt 引导术语
-
-模型会在静音段把 prompt **原样"转录"出来**，还占掉真实语音的时间段。实测有一处吞掉了 88 秒：
-
-```
-传 prompt 时  [25.07→113.71] "请输出简体中文，使用规范标点。"     ← prompt 回声
-不传 prompt   [25.07→113.71] "请不吝点赞 订阅 转发 打赏支持××××栏目"  ← 训练数据污染
-实际内容                     "上课的时间差不多到了，请外面的学员进场入座"
-```
-
-术语引导要放到**事后的术语表**（`examples/terms/*.json`），不要塞给模型。
-
-### 2. ⚠️ VAD 会误杀真实语音，必须做覆盖率审计
-
-Silero VAD 在这份录音上跳过了 19 处、共 202 秒的真实讲话。**判据是音量**：把时间轴空洞逐个测 RMS，音量接近讲话中位值（差值 < 8dB）的空洞就是漏转，不是静音。
-
-这就是为什么流水线必须带 `audit()` 和音量分析——没有它，你根本不知道漏了什么。
-
-**但只查段与段之间的洞还不够**：VAD 还会让漏掉的内容藏在 segment **内部**，
-那种洞音量分析看不见，见坑 11。
-
-### 3. ⚠️ 静音段会产生"网络字幕幻觉"
-
-Whisper 训练数据里有海量网络视频字幕，所以无声学证据时它会吐这些套语：
-
-```
-"请不吝点赞 订阅 转发 打赏支持××××栏目"
-"中文字幕志愿者 ×××"
-"這間餐廳的餐廳有很多不同的食物"   ← 财税讲座里冒出餐厅美食
-```
-
-**区分两种情况，处理方式相反**：
-
-| 情况 | 判据 | 处理 |
-|---|---|---|
-| 真静音（休息/会前） | 音量比讲话低 8~15dB | **剔除**（那里本来就没内容） |
-| 真语音被顶替 | 音量与前后讲话一致，`no_speech_prob` 却高达 0.92~0.95 | **补转**（内容丢了，要捞回来） |
-
-只看关键词会把两者混为一谈。必须结合音量。实测这套分类在本次录音上 17 处判定**零误杀**：
-音量 −27~−30dB 的 4 处判为被顶替去补转，音量 −32~−43dB 的 13 处判为无内容去剔除。
-
-**关键词表认不全幻觉**，还要两条兜底判据：
-
-- **低置信**：`avg_logprob < -1.0`。休息段冒出的"鲍鱼""这间餐厅的餐厅有很多不同的食物"
-  跟主题毫不相干，词表永远穷举不完，但它们的 logprob 都在 −1.4 ~ −2.4。
-- **字符饥饿**：低置信 + 时长 > 5 秒 + **字符密度 < 0.5 字/秒**。正常讲话约 3 字/秒，
-  而"嗯嗯嗯"占了 28.8 秒只转出 3 个字。这条比音量阈值鲁棒——那段音量 −34.7dB
-  并没低过阈值，只有密度暴露了它。
-
-### 4. ⚠️ 中场休息的边界，只看音量会两头判偏
-
-自动识别休息段时，如果只用「音量低于讲话」这一个条件、再用 30 秒粒度扫，
-两端都会判错。实测一版把终点多划了 47 秒，**把"接下来我们开始互动的环节"整句删掉了**；
-起点又划晚了，留下一堆"嗯嗯嗯"。
-
-正确做法（`find_breaks`）：判据是**音量低 且 该窗口真内容字数 < 8**（幻觉不计入字数），
-步长取 10 秒。修好后边界精确到 `02:32:20–02:37:10`，前后干净衔接、关键句无损。
-
-**教训**：凡是"自动删掉一段内容"的逻辑，必须回头验证被删区间的边界，
-否则它会静悄悄吃掉真东西——而且因为你不知道那里本来有什么，永远不会发现。
-
-### 5. ⚠️ 定点补转 3 分钟 ≫ 全量重跑 84 分钟
-
-发现漏转后，不要重跑整个音频。切出问题区段（前后各留 6 秒上下文）、关掉 VAD（它已经判错一次了）、把 `no_speech_threshold` 抬到 0.9（宁可多转不可漏转），单独重转。
-
-本次 19 处、202 秒，**3 分钟全部补回**。而重跑一遍非 batched 全量要 84 分钟——这是本次最大的一次时间浪费，走过一次就够了。
-
-### 6. ⚠️ 合并两路时不能整段删重复
-
-时间重叠的两段，不能因为"看起来重复"就整段丢掉——**同一时间窗里另一路常有对方完全漏掉的新内容**。必须做文本级并集（`strip_common`）：删重复字块、留独有内容。
-
-反过来也有个坑：**时间不重叠的段不能按字块裁**。法规名称、专业术语本来就会被反复引用，"根据大型活动场所财务管理办法第九条"出现十次是正常的，按字块裁会把它削成"根据大九条"。
-
-所以是分级策略：
-- 时间重叠 → 文本级裁剪（`min_block=8`）
-- 时间不重叠 → 只在整段 70% 以上都重复、**且**剩余不足 6 字时才丢弃
-
-> ⚠️ **「取并集」这个说法要收紧**：真实策略是**逐 30 秒桶取字数多的那一路整窗胜出**，
-> 只有跨桶衔接处和补转内容才走上面的文本级去重。桶内输的那一路，即使有独有内容
-> 也会被整桶丢弃。
->
-> 这是**故意的**。2026-08-05 实测了 naive 并集（两路全部行丢给 `merge_rows` 去重）：
-> 字数 42,772 → 55,950（+30.8%），但多出来的基本是同一内容的重复表述——
-> 紧邻重复词块从 0 处涨到 32 处，同一句话带着各自的识别错误各出现一遍：
->
-> ```
-> …新旧制度的衔接昨天××老师也讲了…
-> …新旧政府的衔接昨天的话××老师已经讲了…
-> ```
->
-> 读起来明显更糟，CER 上也会变成一堆插入错。所以桶内二选一是拿「可能丢一点独有内容」
-> 换「不出现重复噪音」，是个站得住的取舍——但**它不是并集**，别这么说。
->
-> 更好的做法应该是句级对齐后再取并集，那是另一件事，没做。
-> `tests/test_cross_engine_merge.py` 把当前行为钉住了，docstring 里写明「不代表最优」。
-
-最后那个「且剩余不足 6 字」是 2026-08-05 补的，不补就还有一个吃内容的口子：
-比例判据会被长法规名带偏。`根据大型活动场所财务管理办法第九条` 占 17 字，
-剥掉它之后 `还要做年度报告` 只剩 7 字，低于 24×0.3=7.2 的门槛，
-**整句真话连同法规名一起被判为重复丢掉**。名字越长，越容易吃掉后面的话。
-`tests/test_pipeline.py::test_merge_keeps_repeated_citations_when_times_do_not_overlap` 盯着这条。
-
-### 7. chunk_length 是权衡，没有最优解
-
-| chunk | 效果 |
-|---|---|
-| 30 秒（默认） | 内容完整，但段落粗（30 秒一整块 93 字），标点少 |
-| 10 秒 | 段落细好排版，但**上下文不足导致漏字**（本次少了 7,431 字） |
-
-结论：**不要为了排版好看去调小 chunk**。排版问题在出稿阶段用停顿+连接词解决，不要牺牲识别完整性。
-
-### 8. int8 量化本身不提速，价值在省显存
-
-实测（RTX 4060 Laptop 8GB，10 分钟音频）：
-
-```
-A  fp16 / batch8  / beam5   18.1x   ← 基准
-B  int8 / batch8  / beam5   16.6x   ← 比 A 慢 8%！
-C  int8 / batch16 / beam5   22.5x   ← +25%
-D  int8 / batch16 / beam1   25.2x   ← +39%
-```
-
-因果链是：int8 省显存 → 腾出空间把 batch 从 8 开到 16 → 才快。单纯换 int8 反而慢（量化/反量化的开销吃掉了带宽收益）。
-
-> 2026-08-06 补：这里曾给 beam1 标注「质量有代价」——**实测证伪**。FLEURS 945 条
-> beam1=7.57% vs beam5=7.56%，完全打平；最困难的慢速歌唱域 beam1 反而好 20pp
-> （beam search 更容易搜到「整段无语音」的路径直接放弃）。beam5 作为默认值
-> 的地位存疑，等目标域金标定夺，见 docs/measurements.md。
-
-### 9. batched 与非 batched 差 4.2 倍，且非 batched 的 GPU 在空转
-
-```
-batched     11.0x 实时   显存 6.4GB   功耗 28W
-非 batched   2.6x 实时   显存 4.1GB   功耗 16W  ← GPU 严重欠载
-```
-
-Whisper 的 decoder 是自回归的，一次只吐一个字。非 batched 时 GPU 上只有一条序列在解码，几千个核心闲着。**永远用 `BatchedInferencePipeline`。**
-
-### 10. 环境坑：LD_LIBRARY_PATH
-
-CTranslate2 要在运行时找到 cuBLAS/cuDNN，它们随 torch 的 pip 包装在 `site-packages/nvidia/` 下。`transcribe.py` 里的 `ensure_cuda_libs()` 已自动处理（设好环境变量后 `os.execv` 重启自己），直接 `python3 transcribe.py` 即可，不用手工 export。
-
-### 11. ⚠️⚠️ 覆盖率审计有个它自己看不见的盲区：段内饥饿
-
-这是本流水线曾经最大的漏洞，2026-08-05 修掉。
-
-`audit()` 把 segment 首尾合并后找空洞——它只看得见**段与段之间**的洞。
-但 VAD 会把静音剪掉再把时间戳映射回原轴，于是一个 segment 的时间跨度
-可以远大于它真正的语音，**这段时间被算作「已覆盖」，内容却根本没转出来**。
-
-实测那份 3.65 小时录音：
-
-```
-密度 < 1.2 字/秒的 segment    27 个，占用 1,142 秒 = 全片 8.7%
-最坏一处  1575s–1871s        296 秒只转出 128 字，avg_logprob = −0.28
-                              ↑ 全片中位密度 3.63 字/秒，这 296 秒本该有约 1,000 字
-```
-
-**判据必须刻意不看置信度**。原有的「低置信」「字符饥饿」两条都写成
-`low_conf and ...`，高置信度直接豁免——恰好放过了损失最大的这一段（−0.28 是很高的置信度）。
-时长撑不起字数就是漏了，模型对自己漏掉的东西一样可以很自信。
-
-修复后这 27 段被切成 30 处补转区段（9 处落在休息段内剔除，实补 21 处）。
-
-**连带的教训**：`质检报告` 过去审的是 pass1，交付给读者的却是合并稿。
-pass1 报 97.3%，成品字幕的时间并集只有 90.0%——**给读者看的数字必须来自交付物本身**。
-现在 `audit_rows()` 在合并之后再审一次，报「时间覆盖」和「字数撑得起的有效语音」两个数，
-残余饥饿段会在日志和文档里点名，让人去回听。
-
-### 12. ⚠️ 段级时间戳不能拿来做字幕，必须开 word_timestamps
-
-同一个根因的另一半。段级时间戳被 VAD 拉得很宽，拿它写 SRT 的结果：
-
-```
-812 条字幕   19% 与前一条时间重叠   36% 超过 15 秒   最长一条 296 秒 / 128 字
-```
-
-而 README 一直把 `.srt` 当作「配原音频逐句回听核对」的凭据——那个粒度上它根本不成立。
-
-开 `word_timestamps=True` 后按词重切，实测（5 分钟片段）：
-**34 条、0 重叠、中位 6.4 秒、最长 20.2 秒、平均 17.9 字**。
-
-代价很小，但**说不出一个精确数**——它和跑与跑之间的抖动同量级：
-
-```
-同一段 15 分钟音频，空闲 GPU 上两套脚本各测一轮
-  脚本 A（每轮重建模型）   关 24.97x   开 24.53x   -1.8%
-  脚本 B（复用模型实例）   关 25.10x   开 23.70x   -6%
-```
-
-> ⚠️ **这里曾经写着 8.8x / 8.4x / +5%，那组数字是错的**，2026-08-05 修正。
-> 当时 GPU 上有别的负载，同一段音频同一套参数测出来只有真值的三分之一。
-> 教训：**测性能前先确认 GPU 是空的**（`nvidia-smi`），否则测的是当时的排队情况，
-> 不是你的代码。两套独立脚本互相印证过之后再往文档里写。
-
-结论不变：代价在个位数百分比，而词级时间戳解决了字幕重叠、段内标点、
-饥饿段密度测量三件事。**没有理由不开。**
-
-> 注意：合并阶段被 `strip_common` 裁过文本的行会丢掉 `words`，
-> 因为词表和裁剪后的正文对不上了。那些行退回整段字幕——
-> 拿错位的词级时间戳去切，比不切更误导。
-
-### 13. ⚠️ 段内标点：停顿阈值要跟着讲者语速走，不能拍死
-
-出稿的停顿标点过去只作用在**段与段之间**，段内一个字都不加，
-所以 30 秒一整块的段落必然是 90 字裸奔。实测旧成品：
-
-```
-43,328 字 / 849 个标点 = 51 字才有一个标点
-280 个句号            = 155 字才有一句
-最长无标点连串 211 字；超过 60 字的连串 245 处
-```
-
-有了词级时间戳就能按词间停顿在段内补标点。但**固定秒数阈值两头都会翻车**：
-0.9 秒的句号阈值在慢速歌唱这类慢速音频上把句号插进了词中间——
-实测把「祈请」这个双字词从中间劈开，前字后面被插了个句号；
-反过来对语速快的讲者，0.35 秒的逗号阈值一个逗号都断不出来。
-
-`gap_thresholds()` 改成从**讲者自己的词间停顿分布**取分位数（p80 作逗号、p95 作句号）。
-那段慢速歌唱音频自适应出来是 1.25 / 6.56 秒，标点密度从 51 字/个降到 21.3 字/个。
-
-还有一条：连接词断句必须看前一个字。实测 **15 处 `这是，第一个环节`**——
-`第一个` 在汉语里更多是宾语而非句首。但粘连字表只能收**前置**成分
-（是第一个／就比如说／是因为）；`的`、`了` 是句末助词，方向正好相反，
-把它们收进去会挡掉 16 个本该有的逗号（`的，所以说`／`了，所以说`／`的，另外`）。
-实测护栏收敛后：逗号 500 → 481，误插 16 → 1。
-
-### 14. ⚠️ 术语命中数要在替换**之前**统计
-
-`terms_hits()` 第一版拿最终正文去数，几乎全部 0 命中——
-因为源词早就被替换光了。在原始（仅繁简转换后）文本上统计才有意义：
-当时那张表实测 **35 条命中、16 条从未命中**——近三分之一是白写的
-（公开示例表已精简，见「术语表」一节）。
-这件事 README 过去教人手工做，现在每次跑完自动报。
-
-### 15. 不要自动折叠「紧邻重复」
-
-成品里有 89 处 `业务交流业务交流`、`会计账簿会计账簿` 这样的紧邻重复，看着像合并的锅。
-去查原始输出：**79 处在单条 ASR segment 内部就已经这样了**，是讲者自己的重复或 ASR 口吃。
-
-自动折叠它就是坑 4 那一类「静悄悄吃掉真内容」——而且因为你不知道那里本来说了几遍，
-永远不会发现。`tests/test_pipeline.py::test_speaker_repetition_is_never_collapsed` 把这条锁死了。
-
-### 16. Whisper 不做说话人分离
-
-问答环节转出来是一整片，分不清谁在说。需要的话得另接 pyannote（要 HF token + 额外模型）。本流水线**没有**这个能力，别指望。
-
----
-
-## 正确率评测
-
-流水线过去只报覆盖率——转到了多少；不报正确率——转对了多少。**覆盖率 100% 的稿子
-可以句句是错的。** 三步建立自己的尺子：
+## 测一测你这份录音转得多准
 
 ```bash
-# 1. 从跑完的输出里切一段生成待校对稿（初稿就是 ASR 结果）
-audio-transcribe goldset 输出目录/ --from 00:10:00 --to 00:25:00 -o sample.gold.tsv
-
-# 2. 打开 sample.gold.tsv，**只改错字**。不碰时间戳、不碰格式、不合并行。
-
+# 1. 从输出切一段生成待校对稿（初稿就是 ASR 结果）
+audio-transcribe goldset 输出目录/ --from 00:10:00 --to 00:20:00 -o sample.gold.tsv
+# 2. 打开 sample.gold.tsv，只改第三列的错字——不动时间戳、不合并行
 # 3. 评测
 audio-transcribe eval --gold sample.gold.tsv --hyp 输出目录/
 ```
 
-报告里除了 CER，还有两个这个项目专属的数：
+报告含 CER、**删除率**（漏了多少——本工具的立身指标）与**同音/近音错占比**
+（决定拼音类修正手段的天花板）。
 
-- **删除率**——「不遗漏」的直接度量。过去只有覆盖率在代理它，而覆盖率看不见段内饥饿（坑 11）
-- **同音/近音替换率**——替换错误里读音相同或相近的占比。这个数就是拼音纠错与
-  LLM 同音校订的天花板：它要是只有 10%，做同音修正最多也只能救回 10% 的替换错
-
-各项实测数字与开关判定见 [docs/measurements.md](docs/measurements.md)。
-
-> 读数字前先看那份文档里的「CER 评测本身的已知局限」——数字逐字符映射、
-> `n_ref=0`、换位分类三条，不知道的话会把噪声当成真错。
-
----
-
-## 术语表
-
-`examples/terms/*.json`，格式：
+## 术语表（可选）
 
 ```json
-{
-  "name": "领域名",
-  "terms": ["正确写法", ...],
-  "fixes": [["误识写法", "正确写法"], ...],
-  "clause_lead": ["那么", "所以说", ...]
-}
+{ "name": "领域名",
+  "fixes": [["误识写法", "正确写法"]],
+  "terms": ["正确写法"] }
 ```
 
-两种机制互补，**`fixes` 优先级更高**（它是人工逐条确认过的）：
+- `fixes`：字面精确替换，人工逐条确认，**加条目前先统计频次**防误伤
+- `terms`：拼音模糊匹配，一条覆盖一类同音错——**默认关闭**，`--pinyin-fix` 显式开
 
-| 字段 | 机制 | 适用 |
+示例：`examples/terms/finance-lecture.json`（42 fixes + 41 terms，真实录音实测核定）。
+
+## 两个会自动改正文的开关，默认都关
+
+| 参数 | 作用 | 默认关的原因 |
 |---|---|---|
-| `fixes` | 字面精确替换 | 拼音对不上的错，如 `花票→发票`（hua≠fa） |
-| `terms` | 拼音模糊匹配，只列正确写法 | 同音/近音错，一条覆盖一整类，如 `厂所→场所`。**默认关，`--pinyin-fix` 开** |
+| `--pinyin-fix` | 拼音级术语纠错 | 无调拼音会把「节余/结余」这类真实不同的词判成同一个 |
+| `--polish` | LLM 同音校订 | **正文会发往你配置的 endpoint**；且同音替换本身可能改变含义 |
 
-**加 `fixes` 条目前务必先统计频次**，确认误识写法出现次数少、正确写法出现次数多，
-才能安全批量替换。实测某高频正词 268 次正确、其误识写法仅 3 次，替换安全。
+开启后必须逐条核对 `质检报告.json` 里的改动清单（每条带时间戳可回听）。
+`--polish` 配套 `--llm-base-url` / `--llm-model` / `--polish-dry-run`，
+key 只从环境变量 `AUDIO_TRANSCRIBE_LLM_KEY` 读。
 
-**⚠️ `terms` 默认是关闭的**，要 `--pinyin-fix` 显式开启。原因：无调拼音会把
-**两个真实存在、含义不同的词**判成同一个，补多少术语都堵不住——
+## 已知局限
 
-```
-节余分配 → 结余分配    jie yu / jie yu，会计上是两个不同概念
-内部空值 → 内部控制    kong zhi / kong zhi
-```
+1. **ASR 准确率有上限**：方言口音 + 术语密集段落错得密，术语表修高频错，
+   其余需对照 `.srt` 回听校对
+2. **标点是推定的**（词间停顿 + 连接词），不代表讲者原意
+3. **不做说话人分离**
+4. **歌唱/歌咏类音频不适用**（慢速拖腔实测 CER 74%+，删除主导，补转救不回）
+5. 中场休息自动识别可能误判，`--keep-break` 可关
 
-穷举扫描（jieba 34.9 万词词典）发现覆盖 8 个以上术语、1000+ 组合会静默改坏正确文本。
-开启后**必须逐条看质检报告的 `pinyin_fixes`**，每条都带时间戳可以回听核对。
-详见 [docs/measurements.md](docs/measurements.md)。
+## 深入阅读
 
-跑完一次之后，每条修正的命中数直接看 `质检报告.json` 的 `terms_hits`，
-日志也会报 0 命中的条目——**统计口径必须是替换前的原始文本**（见坑 14）。
+- **[docs/lessons.md](docs/lessons.md)** —— 16 条实测踩坑记录：VAD 误杀、静音幻觉、
+  段内饥饿、合并陷阱、性能真相……每一条都是测出来的，不是文档推理。
+  **这份记录是本项目真正的价值所在。**
+- **[docs/measurements.md](docs/measurements.md)** —— 全部实测数字与每个默认值的
+  判定依据，包括被推翻过的结论（原样保留）
 
-已有术语表：
-- `examples/terms/finance-lecture.json` — 财税讲座域（方言口音讲座），
-  42 条 `fixes` + 41 条 `terms`，取自真实录音实测核定。
-
----
-
-## 环境
-
-已装好（`~/.local/lib/python3.12/site-packages/`）：`faster-whisper`、`ctranslate2`、`opencc-python-reimplemented`，模型权重在 `~/.cache/huggingface/`（2.9GB，**不要删**，重下要 45 分钟）。
-
-从零开始装：
+## 开发
 
 ```bash
-git clone https://github.com/xr843/audio-transcribe && cd audio-transcribe
-pip install --user --break-system-packages -e ".[whisper]"
-# 模型首次运行自动下载；网络慢的话直接拷贝 ~/.cache/huggingface/hub/models--Systran--faster-whisper-large-v3
+pip install -e ".[dev]"       # 纯 CPU 核心依赖，不装 ASR 后端
+python3 -m pytest tests/ -q   # 144 tests + 1 xfail，秒级，无需 GPU/音频
 ```
-
-**另需系统装有 `ffmpeg`**（pip 装不了它）：输入的 mp3/m4a/wav 等常见格式都靠它
-统一转成 16kHz 单声道，没装会在转码一步直接报错。
-
-```bash
-sudo apt install ffmpeg      # Debian/Ubuntu；macOS 用 brew install ffmpeg
-```
-
-可选 extras：`[funasr]` 中文专用第二引擎、`[dev]` 只跑测试。
-核心依赖是纯 CPU 可装的（opencc / pypinyin / rapidfuzz / numpy），
-ASR 后端才需要 GPU——所以 `pip install -e ".[dev]"` 就能跑全部测试，CI 也是这么装的。
-
-### 没有 GPU 怎么用
-
-**推荐 `--engine funasr --device cpu`：纯 CPU 实测 3.2x 实时**（5 分钟音频 94 秒转完，
-1 小时约 19 分钟）——Paraformer 是非自回归架构，CPU 是它的强项，质量就是上表
-SpeechIO 2% 级的那个引擎：
-
-```bash
-pip install --user -e ".[funasr]"
-audio-transcribe run 录音.mp3 --engine funasr --device cpu
-```
-
-whisper 系的 `--device cpu` 只适合拿 `--model tiny` 验证流程——large-v3 在 CPU 上
-慢于实时数倍，不实用。注意 funasr 路线的适用边界仍同上文：标准普通话内容。
-
-### 代码结构
 
 ```
 audio_transcribe/
@@ -497,30 +146,4 @@ audio_transcribe/
   terms.py       术语表：字面 + 拼音       polish.py  LLM 同音校订（拼音硬约束）
 ```
 
-`transcribe.py` 是薄入口，`python3 transcribe.py 录音.mp3` 与装包后的
-`audio-transcribe run 录音.mp3` 等价。
-
----
-
-## 已知局限
-
-1. **ASR 准确率有上限**。方言口音 + 专业术语密集的段落错得很密
-   （`旧账导进去` 被转成 `旧港倒进去`）。术语表能修高频错，剩下的要人工对照 `.srt` 回听校对。
-   这是目前**可读性上最大的短板**。
-
-   > ⚠️ 别被「同音错」这个说法带偏——**这类错未必真同音**。就拿上面那个例子：
-   > `倒/导` 确实同音（dào/dǎo），但 `港/账` 是 gǎng vs zhàng，声母都不一样，
-   > 连近音归并都合不到一起。所以任何「只允许同音替换」的修正机制
-   > （拼音术语纠错、拼音硬约束的 LLM 校订）**天生修不了它**。
-   >
-   > 到底有多大比例的错是同音/近音，是个实测问题，答案就是 `eval` 报的
-   > `homo_pct` / `near_pct`。这个数直接决定上述机制值不值得做——先量，再决定。
-2. **标点是推定的**，按词间停顿与连接词生成，不代表讲者原意停顿。
-3. **不做说话人分离**（见坑 16）。
-4. 中场休息靠音量自动识别，若录音音量本身波动大可能误判，用 `--keep-break` 关掉。现在会识别多段（全天课上下午各一次），最多 3 段。
-5. **歌唱/歌咏类音频（慢速拖腔、带旋律）不在适用范围**。实测慢速集体歌唱（1.5~2.7 字/秒拖腔带和声）：
-   裸 Whisper 输出几乎全是幻觉套语（CER 95.8%），完整流水线的审计+补转能拉回到
-   74.2%，但主导败因是 44% 的删除——模型对拖腔大段不出字，补转也捞不回来。
-   数字与实验设计见 [docs/measurements.md](docs/measurements.md)。
-6. **旧的 `.work/` 没有词级时间戳**。2026-08-05 之前跑出来的中间结果里没有 `words`，
-   复用它们出稿时字幕只能防重叠、不能重切，段内标点也加不上。要拿到完整效果得删掉 `.work/` 重跑。
+MIT License.

@@ -195,7 +195,7 @@ def test_punctuate_row_without_words_is_identity():
 
 def test_speaker_repetition_is_never_collapsed():
     """`业务交流业务交流` 在 pass1 原始输出里就是这样——79/89 处重复源自单段内部，
-    是讲者自己的重复，不是合并产生的。自动折叠等于坑 4 那类静悄悄删真内容。"""
+    是讲者自己的重复，不是合并产生的。自动折叠等于 docs/lessons.md 坑 4 那类静悄悄删真内容。"""
     t = "由我先给大家进行业务交流业务交流就是财务管理"
     out = render.insert_clause_breaks(t)
     assert out.count("业务交流") == 2
