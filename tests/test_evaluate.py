@@ -69,3 +69,13 @@ def test_mixed_chinese_latin_homophone_still_detected():
     assert r["sub"] == 3
     assert r["homo"] == 1
     assert r["near"] == 1
+
+
+def test_hanzi_digit_styles_are_equivalent():
+    """「二零一九」和「2019」是同一个数的两种合法读写。
+
+    曾经 0 映射为「〇」而 ASR 引擎都写「零」，「二零一九」对「2019」平白
+    多一个替换错——系统性偏袒输出阿拉伯数字的引擎（FLEURS 双引擎对比撞出）。
+    """
+    assert E.score("2019年", "二零一九年")["cer"] == 0.0
+    assert E.score("二〇一九", "二零一九")["cer"] == 0.0

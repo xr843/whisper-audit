@@ -51,3 +51,12 @@ def test_eval_manifest_tolerates_empty_reference_rows():
     assert rep["ins"] == 4      # 空参考对应的 4 个字算插入
     assert rep["sub"] == 1
     assert rep["cer"] == (1 + 4) / 4
+
+
+def test_eval_manifest_keeps_per_item_hypotheses():
+    """转录烧 GPU 小时，评分口径调整不该逼人重烧——逐条 hyp 必须带回。"""
+    items = [{"audio": "a.wav", "text": "甲乙"}]
+    rep = M.eval_manifest(items, lambda p: "甲丙")
+    assert rep["hyps"] == [{"audio": "a.wav", "text": "甲乙", "hyp": "甲丙"}]
+    lean = M.eval_manifest(items, lambda p: "甲丙", keep_hyps=False)
+    assert "hyps" not in lean
