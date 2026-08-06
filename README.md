@@ -1,5 +1,19 @@
 # audio-transcribe
 
+> **English summary.** A long-audio Chinese transcription pipeline built for
+> *completeness*, not for a single pass. Running Whisper once always drops
+> content — and worse, you never find out where. This pipeline cross-runs two
+> ASR passes, audits the timeline for gaps by measuring actual RMS loudness,
+> detects speech swallowed *inside* segments by character density, re-transcribes
+> only the problem spans, and scores character-level CER against a gold set you
+> build by fixing typos in its own output. Runs offline on a local GPU; audio
+> never leaves the machine.
+> The 「踩过的坑」 section below is the real value here — 16 findings, every one
+> measured on real recordings rather than reasoned from documentation.
+>
+> `pip install -e ".[whisper]"` then `audio-transcribe run recording.mp3`.
+> Docs are in Chinese; the code and CLI are not.
+
 长音频转文档流水线。目标是**不遗漏**，不是"转一遍"。
 
 基于 faster-whisper large-v3 + 本机 GPU，离线运行，音频不出本机。
@@ -10,7 +24,7 @@
 
 ```bash
 # 多人会议 / 口音重 / 内容重要 —— 双路交叉，最全（默认）
-python3 transcribe.py 录音.mp3 --profile meeting --terms terms/finance-lecture.json
+python3 transcribe.py 录音.mp3 --profile meeting --terms examples/terms/finance-lecture.json
 
 # 单人讲授、音质好 —— 单路 + 补转，快一半
 python3 transcribe.py 录音.mp3 --profile lecture
@@ -22,10 +36,24 @@ python3 transcribe.py 录音.mp3 --profile fast
 其他参数：`--model`（默认 large-v3）、`--device cuda|cpu`、`--compute`（覆盖档位量化）、
 `--language`（默认 zh）、`--keep-break`（不剔除休息段）、`--title`、`-o`。
 
+**两个会自动改正文的功能，默认都关着**，开之前请先读 [docs/measurements.md](docs/measurements.md)：
+
+| 参数 | 作用 | 为什么默认关 |
+|---|---|---|
+| `--pinyin-fix` | 拼音级术语纠错 | 无调拼音会把两个真实存在、含义不同的词判成同一个（节余/结余、空值/控制） |
+| `--loose-pinyin` | 上者再开近音归并 | 碰撞面更大 |
+| `--polish` | LLM 同音校订 | **正文会发往你指定的 endpoint**；受拼音硬约束，只放行同音替换 |
+
+`--polish` 配套：`--llm-base-url`（OpenAI 兼容）、`--llm-model`、`--polish-dry-run`
+（只打印将发送什么，不发请求）。API key 只从环境变量 `AUDIO_TRANSCRIBE_LLM_KEY` 读，
+不接受命令行参数——那会落进 shell 历史。
+
+三者**都没有 CER 证据说明净收益为正**，这是它们默认关闭的根本原因，不是成熟度问题。
+
 跑测试（不需要 GPU、不需要音频，几秒钟）：
 
 ```bash
-pip install -r requirements.txt
+pip install -e ".[dev]"      # 只装纯 CPU 的核心依赖，不装 ASR 后端
 python3 -m pytest tests/ -q
 ```
 
@@ -39,8 +67,13 @@ python3 -m pytest tests/ -q
 | `质检报告.json` | 覆盖率、空洞、幻觉清单、术语命中数——**出稿前该看的东西** |
 | `.work/` | 中间结果，重跑时自动复用（改参数重跑前先删） |
 
-参考速度：本机 RTX 4060 Laptop (8GB)，3 小时 39 分音频，meeting 档约 50 分钟（两路 20+31 分钟），lecture 档约 20 分钟。
-开词级时间戳后约 +5%（见坑 12），补转处数会变多（那份录音从 19 处增到 21 处）。
+参考速度：本机 RTX 4060 Laptop (8GB)，3 小时 39 分**讲座**录音（语音密集），
+meeting 档约 50 分钟（两路 20+31 分钟），lecture 档约 20 分钟。
+
+> 这个数和 `bench/throughput.py` 报的 ~24x 不是一回事，别混着看。基准脚本用的是
+> 一段静音很多的照稿朗读音频，VAD 砍掉近半，所以「实时倍数」虚高——它只用来
+> **对同一段音频做回归比较**，不能拿来预估你那份录音要跑多久。
+> 讲座类语音密集的录音，按上面这行的实际观测估算。
 
 ---
 
@@ -81,7 +114,7 @@ python3 -m pytest tests/ -q
 实际内容                     "上课的时间差不多到了，请外面的学员进场入座"
 ```
 
-术语引导要放到**事后的术语表**（`terms/*.json`），不要塞给模型。
+术语引导要放到**事后的术语表**（`examples/terms/*.json`），不要塞给模型。
 
 ### 2. ⚠️ VAD 会误杀真实语音，必须做覆盖率审计
 
@@ -126,7 +159,7 @@ Whisper 训练数据里有海量网络视频字幕，所以无声学证据时它
 两端都会判错。实测一版把终点多划了 47 秒，**把"接下来我们开始互动的环节"整句删掉了**；
 起点又划晚了，留下一堆"嗯嗯嗯"。
 
-正确做法（`find_break`）：判据是**音量低 且 该窗口真内容字数 < 8**（幻觉不计入字数），
+正确做法（`find_breaks`）：判据是**音量低 且 该窗口真内容字数 < 8**（幻觉不计入字数），
 步长取 10 秒。修好后边界精确到 `02:32:20–02:37:10`，前后干净衔接、关键句无损。
 
 **教训**：凡是"自动删掉一段内容"的逻辑，必须回头验证被删区间的边界，
@@ -147,6 +180,25 @@ Whisper 训练数据里有海量网络视频字幕，所以无声学证据时它
 所以是分级策略：
 - 时间重叠 → 文本级裁剪（`min_block=8`）
 - 时间不重叠 → 只在整段 70% 以上都重复、**且**剩余不足 6 字时才丢弃
+
+> ⚠️ **「取并集」这个说法要收紧**：真实策略是**逐 30 秒桶取字数多的那一路整窗胜出**，
+> 只有跨桶衔接处和补转内容才走上面的文本级去重。桶内输的那一路，即使有独有内容
+> 也会被整桶丢弃。
+>
+> 这是**故意的**。2026-08-05 实测了 naive 并集（两路全部行丢给 `merge_rows` 去重）：
+> 字数 42,772 → 55,950（+30.8%），但多出来的基本是同一内容的重复表述——
+> 紧邻重复词块从 0 处涨到 32 处，同一句话带着各自的识别错误各出现一遍：
+>
+> ```
+> 邀请到一位省××研究所的×××老师跟大家讲授
+> 有位是××研究所的×××老师跟大家讲授
+> ```
+>
+> 读起来明显更糟，CER 上也会变成一堆插入错。所以桶内二选一是拿「可能丢一点独有内容」
+> 换「不出现重复噪音」，是个站得住的取舍——但**它不是并集**，别这么说。
+>
+> 更好的做法应该是句级对齐后再取并集，那是另一件事，没做。
+> `tests/test_cross_engine_merge.py` 把当前行为钉住了，docstring 里写明「不代表最优」。
 
 最后那个「且剩余不足 6 字」是 2026-08-05 补的，不补就还有一个吃内容的口子：
 比例判据会被长法规名带偏。`根据大型活动场所财务管理办法第九条` 占 17 字，
@@ -229,13 +281,21 @@ pass1 报 97.3%，成品字幕的时间并集只有 90.0%——**给读者看的
 开 `word_timestamps=True` 后按词重切，实测（5 分钟片段）：
 **34 条、0 重叠、中位 6.4 秒、最长 20.2 秒、平均 17.9 字**。
 
-代价实测约 +5%（同一段音频、同一进程内、已预热）：
+代价很小，但**说不出一个精确数**——它和跑与跑之间的抖动同量级：
 
 ```
-15 分钟片段   False  102.1 秒  8.8x 实时      True  107.7 秒  8.4x 实时   +5%
- 5 分钟片段   False   20.7 秒 14.5x 实时      True   20.7 秒 14.5x 实时   +0%
-              ↑ 5 分钟那组测不出差异，样本太短被解码启动摊薄了，以 15 分钟组为准
+同一段 15 分钟音频，空闲 GPU 上两套脚本各测一轮
+  脚本 A（每轮重建模型）   关 24.97x   开 24.53x   -1.8%
+  脚本 B（复用模型实例）   关 25.10x   开 23.70x   -6%
 ```
+
+> ⚠️ **这里曾经写着 8.8x / 8.4x / +5%，那组数字是错的**，2026-08-05 修正。
+> 当时 GPU 上有别的负载，同一段音频同一套参数测出来只有真值的三分之一。
+> 教训：**测性能前先确认 GPU 是空的**（`nvidia-smi`），否则测的是当时的排队情况，
+> 不是你的代码。两套独立脚本互相印证过之后再往文档里写。
+
+结论不变：代价在个位数百分比，而词级时间戳解决了字幕重叠、段内标点、
+饥饿段密度测量三件事。**没有理由不开。**
 
 词级时间戳还顺手解决了段内标点（坑 13）和饥饿段的密度测量。**没有理由不开。**
 
@@ -270,9 +330,9 @@ pass1 报 97.3%，成品字幕的时间并集只有 90.0%——**给读者看的
 
 ### 14. ⚠️ 术语命中数要在替换**之前**统计
 
-`terms_hits()` 第一版拿最终正文去数，结果 54 条命中 1 条——
+`terms_hits()` 第一版拿最终正文去数，结果当时那张 54 条的表只命中 1 条——
 因为源词早就被替换光了。在原始（仅繁简转换后）文本上统计才有意义：
-实测 **54 条里 42 条命中、12 条从未命中**，那 12 条是白写的。
+实测 **51 条里 35 条命中、16 条从未命中**，那 12 条是白写的。
 这件事 README 过去教人手工做，现在每次跑完自动报。
 
 ### 15. 不要自动折叠「紧邻重复」
@@ -289,26 +349,75 @@ pass1 报 97.3%，成品字幕的时间并集只有 90.0%——**给读者看的
 
 ---
 
+## 正确率评测
+
+流水线过去只报覆盖率——转到了多少；不报正确率——转对了多少。**覆盖率 100% 的稿子
+可以句句是错的。** 三步建立自己的尺子：
+
+```bash
+# 1. 从跑完的输出里切一段生成待校对稿（初稿就是 ASR 结果）
+audio-transcribe goldset 输出目录/ --from 00:10:00 --to 00:25:00 -o sample.gold.tsv
+
+# 2. 打开 sample.gold.tsv，**只改错字**。不碰时间戳、不碰格式、不合并行。
+
+# 3. 评测
+audio-transcribe eval --gold sample.gold.tsv --hyp 输出目录/
+```
+
+报告里除了 CER，还有两个这个项目专属的数：
+
+- **删除率**——「不遗漏」的直接度量。过去只有覆盖率在代理它，而覆盖率看不见段内饥饿（坑 11）
+- **同音/近音替换率**——替换错误里读音相同或相近的占比。这个数就是拼音纠错与
+  LLM 同音校订的天花板：它要是只有 10%，做同音修正最多也只能救回 10% 的替换错
+
+各项实测数字与开关判定见 [docs/measurements.md](docs/measurements.md)。
+
+> 读数字前先看那份文档里的「CER 评测本身的已知局限」——数字逐字符映射、
+> `n_ref=0`、换位分类三条，不知道的话会把噪声当成真错。
+
+---
+
 ## 术语表
 
-`terms/*.json`，格式：
+`examples/terms/*.json`，格式：
 
 ```json
 {
   "name": "领域名",
+  "terms": ["正确写法", ...],
   "fixes": [["误识写法", "正确写法"], ...],
   "clause_lead": ["那么", "所以说", ...]
 }
 ```
 
-**加新条目前务必先统计频次**，确认误识写法出现次数少、正确写法出现次数多，才能安全批量替换。
-本次实测 "大型" 268 次正确 vs "中教/中占" 3 次误识，替换安全。
+两种机制互补，**`fixes` 优先级更高**（它是人工逐条确认过的）：
+
+| 字段 | 机制 | 适用 |
+|---|---|---|
+| `fixes` | 字面精确替换 | 拼音对不上的错，如 `花票→发票`（hua≠fa） |
+| `terms` | 拼音模糊匹配，只列正确写法 | 同音/近音错，一条覆盖一整类，如 `厂所→场所`。**默认关，`--pinyin-fix` 开** |
+
+**加 `fixes` 条目前务必先统计频次**，确认误识写法出现次数少、正确写法出现次数多，
+才能安全批量替换。本次实测 "大型" 268 次正确 vs "中教/中占" 3 次误识，替换安全。
+
+**⚠️ `terms` 默认是关闭的**，要 `--pinyin-fix` 显式开启。原因：无调拼音会把
+**两个真实存在、含义不同的词**判成同一个，补多少术语都堵不住——
+
+```
+节余分配 → 结余分配    jie yu / jie yu，会计上是两个不同概念
+内部空值 → 内部控制    kong zhi / kong zhi
+```
+
+穷举扫描（jieba 34.9 万词词典）发现覆盖 8 个以上术语、1000+ 组合会静默改坏正确文本。
+开启后**必须逐条看质检报告的 `pinyin_fixes`**，每条都带时间戳可以回听核对。
+详见 [docs/measurements.md](docs/measurements.md)。
 
 跑完一次之后，每条修正的命中数直接看 `质检报告.json` 的 `terms_hits`，
 日志也会报 0 命中的条目——**统计口径必须是替换前的原始文本**（见坑 14）。
 
 已有术语表：
-- `finance-lecture.json` — 财税讲座域（方言口音讲座），54 组（实测 42 条命中、12 条从未命中）
+- `examples/terms/finance-lecture.json` — 财税讲座域（方言口音讲座），
+  51 条 `fixes` + 44 条 `terms`。开源前已整理部分条目。
 
 ---
 
@@ -319,17 +428,45 @@ pass1 报 97.3%，成品字幕的时间并集只有 90.0%——**给读者看的
 换机器时：
 
 ```bash
-pip install --user --break-system-packages -r requirements.txt
+pip install --user --break-system-packages -e ".[whisper]"
 # 模型首次运行自动下载；网络慢的话直接拷贝 ~/.cache/huggingface/hub/models--Systran--faster-whisper-large-v3
 ```
 
+可选 extras：`[funasr]` 中文专用第二引擎、`[dev]` 只跑测试。
+核心依赖是纯 CPU 可装的（opencc / pypinyin / rapidfuzz / numpy），
+ASR 后端才需要 GPU——所以 `pip install -e ".[dev]"` 就能跑全部测试，CI 也是这么装的。
+
 没有 N 卡时 `--device cpu`（会自动退到 int8，很慢，只适合短音频验证流程）。
+
+### 代码结构
+
+```
+audio_transcribe/
+  cli.py         命令行与主流程          engines/   ASR 后端（whisper / funasr）
+  audio.py       转码 + 音量测量          audit.py   空洞 / 幻觉 / 段内饥饿 / 终审
+  merge.py       多路合并与去重           render.py  标点 / 分段 / 出稿 / 字幕重切
+  evaluate.py    字级 CER 与增删改分解     goldset.py 待校对稿生成与评测入口
+  terms.py       术语表：字面 + 拼音       polish.py  LLM 同音校订（拼音硬约束）
+```
+
+`transcribe.py` 是薄入口，`python3 transcribe.py 录音.mp3` 与装包后的
+`audio-transcribe run 录音.mp3` 等价。
 
 ---
 
 ## 已知局限
 
-1. **ASR 准确率有上限**。方言口音 + 专业术语密集的段落，同音错较多（"旧账导进去"→"旧港倒进去"）。术语表能修高频错，剩下的需要人工对照 `.srt` 回听校对。这是目前**可读性上最大的短板**，术语表这种字面替换救不了，要真提一档得在出稿前加一道本地 LLM 校订（离线跑，不破坏「音频不出本机」）。
+1. **ASR 准确率有上限**。方言口音 + 专业术语密集的段落错得很密
+   （`旧账导进去` 被转成 `旧港倒进去`）。术语表能修高频错，剩下的要人工对照 `.srt` 回听校对。
+   这是目前**可读性上最大的短板**。
+
+   > ⚠️ 别被「同音错」这个说法带偏——**这类错未必真同音**。就拿上面那个例子：
+   > `倒/导` 确实同音（dào/dǎo），但 `港/账` 是 gǎng vs zhàng，声母都不一样，
+   > 连近音归并都合不到一起。所以任何「只允许同音替换」的修正机制
+   > （拼音术语纠错、拼音硬约束的 LLM 校订）**天生修不了它**。
+   >
+   > 到底有多大比例的错是同音/近音，是个实测问题，答案就是 `eval` 报的
+   > `homo_pct` / `near_pct`。这个数直接决定上述机制值不值得做——先量，再决定。
 2. **标点是推定的**，按词间停顿与连接词生成，不代表讲者原意停顿。
 3. **不做说话人分离**（见坑 16）。
 4. 中场休息靠音量自动识别，若录音音量本身波动大可能误判，用 `--keep-break` 关掉。现在会识别多段（全天课上下午各一次），最多 3 段。

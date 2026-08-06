@@ -1,0 +1,16 @@
+name: ci
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # 只装核心依赖 + dev。CI 没有 GPU，跑的是纯文本阶段与适配器纯函数；
+      # 把 ASR 后端加进来只会让 CI 装不动，且并不会多测到任何东西。
+      - run: pip install -e ".[dev]"
+      - run: python -m pytest tests/ -q
