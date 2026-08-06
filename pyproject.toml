@@ -15,6 +15,7 @@ dependencies = [
     "opencc-python-reimplemented>=0.1.7",
     "pypinyin>=0.53",
     "rapidfuzz>=3.9",
+    "jieba>=0.42",
     "numpy>=1.24",
 ]
 
