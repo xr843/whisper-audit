@@ -453,11 +453,19 @@ audio-transcribe eval --gold sample.gold.tsv --hyp 输出目录/
 
 已装好（`~/.local/lib/python3.12/site-packages/`）：`faster-whisper`、`ctranslate2`、`opencc-python-reimplemented`，模型权重在 `~/.cache/huggingface/`（2.9GB，**不要删**，重下要 45 分钟）。
 
-换机器时：
+从零开始装：
 
 ```bash
+git clone https://github.com/xr843/audio-transcribe && cd audio-transcribe
 pip install --user --break-system-packages -e ".[whisper]"
 # 模型首次运行自动下载；网络慢的话直接拷贝 ~/.cache/huggingface/hub/models--Systran--faster-whisper-large-v3
+```
+
+**另需系统装有 `ffmpeg`**（pip 装不了它）：输入的 mp3/m4a/wav 等常见格式都靠它
+统一转成 16kHz 单声道，没装会在转码一步直接报错。
+
+```bash
+sudo apt install ffmpeg      # Debian/Ubuntu；macOS 用 brew install ffmpeg
 ```
 
 可选 extras：`[funasr]` 中文专用第二引擎、`[dev]` 只跑测试。
