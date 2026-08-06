@@ -5,10 +5,28 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "audio-transcribe"
 version = "0.2.0"
-description = "长音频转文档流水线，以不遗漏为目标，带覆盖率审计与字级 CER 评测"
-readme = "README.md"
+description = "长音频中文转录流水线：覆盖率审计 + 定点补转 + 字级 CER 评测，双引擎离线运行"
+readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.10"
 license = { text = "MIT" }
+authors = [{ name = "xr843" }]
+keywords = ["asr", "speech-recognition", "transcription", "chinese", "whisper",
+            "funasr", "paraformer", "subtitles", "cer", "diarization"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: Chinese (Simplified)",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Text Processing :: Linguistic",
+]
 
 # 核心依赖必须纯 CPU 可装——ASR 后端走 extras，否则 CI 装不动。
 dependencies = [
@@ -23,6 +41,12 @@ dependencies = [
 whisper = ["faster-whisper>=1.1.0", "ctranslate2>=4.5,<5"]
 funasr = ["funasr>=1.1.0"]
 dev = ["pytest>=8.0", "soundfile>=0.12"]   # soundfile：float32 WAV 测试夹具
+
+[project.urls]
+Homepage = "https://github.com/xr843/audio-transcribe"
+Repository = "https://github.com/xr843/audio-transcribe"
+"实测数据" = "https://github.com/xr843/audio-transcribe/blob/master/docs/measurements.md"
+"踩坑记录" = "https://github.com/xr843/audio-transcribe/blob/master/docs/lessons.md"
 
 [project.scripts]
 audio-transcribe = "audio_transcribe.cli:main"
