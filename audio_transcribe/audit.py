@@ -3,6 +3,7 @@ import math
 import re
 
 # 模型在静音段会吐训练数据里的网络视频字幕套语。这些词出现即幻觉。
+# 词表来源：Whisper 中文训练数据里的高频视频字幕套语（实测静音段幻觉）。
 HALLU_WORDS = (r"点赞|订阅|打赏|字幕志愿者|中文字幕|谢谢观看|感谢观看|"
                r"请不吝|字幕组|翻译by|本视频|下期再见")
 HALLU_PAT = re.compile(HALLU_WORDS)
