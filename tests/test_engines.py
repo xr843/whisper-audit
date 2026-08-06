@@ -42,3 +42,9 @@ def test_out_json_none_does_not_crash_the_cache_check():
 def test_base_engine_transcribe_is_abstract():
     with pytest.raises(NotImplementedError):
         Engine().transcribe("x.wav")
+
+
+def test_funasr_engine_is_lazily_importable():
+    """funasr 引擎模块按需加载——get_engine 未见注册时先尝试延迟导入。"""
+    e = get_engine("funasr")
+    assert e.name == "funasr"
