@@ -85,9 +85,13 @@ def add_eval_args(ap):
                     help="公开集 jsonl（每行 {\"audio\":…, \"text\":…}），"
                          "与 --gold/--hyp 二选一")
     ap.add_argument("--json", default=None, help="把报告写成 json")
+    ap.add_argument("--engine", default="whisper", choices=["whisper", "funasr"],
+                    help="仅 --manifest 时用：拿哪个引擎跑公开集")
     ap.add_argument("--model", default="large-v3", help="仅 --manifest 时用")
     ap.add_argument("--device", default="cuda", help="仅 --manifest 时用")
     ap.add_argument("--language", default="zh", help="仅 --manifest 时用")
+    ap.add_argument("--limit", type=int, default=None,
+                    help="仅 --manifest 时用：只评前 N 条（抽样要在报告里写明）")
     return ap
 
 
@@ -142,23 +146,37 @@ def _eval_manifest(args):
     from bench.manifest import eval_manifest, read_manifest
     ensure_cuda_libs()
     items = read_manifest(args.manifest)
-    log(f"公开集 {args.manifest}：{len(items)} 条，开始逐条转录…")
-
-    # 模型只加载一次。走 transcribe_pass 会每条重建一次模型——
-    # AISHELL test 有 7,000 多条，那是几十小时的纯加载时间。
-    from faster_whisper import BatchedInferencePipeline, WhisperModel
-    model = WhisperModel(args.model, device=args.device, compute_type="int8_float16")
-    pipe = BatchedInferencePipeline(model=model)
+    if args.limit:
+        items = items[:args.limit]
+    log(f"公开集 {args.manifest}：{len(items)} 条，引擎 {args.engine}，开始逐条转录…")
     done = [0]
 
-    def run(path):
-        segs, _ = pipe.transcribe(path, language=args.language, batch_size=16,
-                                  beam_size=5, condition_on_previous_text=False)
-        text = "".join(s.text for s in segs)
+    def tick():
         done[0] += 1
         if done[0] % 100 == 0:
             log(f"  {done[0]}/{len(items)}")
-        return text
+
+    if args.engine == "funasr":
+        from .engines import get_engine
+        eng = get_engine("funasr", device=args.device)
+
+        def run(path):
+            d = eng.transcribe(path)
+            tick()
+            return "".join(s["text"] for s in d["segments"])
+    else:
+        # 模型只加载一次。走 transcribe_pass 会每条重建一次模型——
+        # AISHELL test 有 7,000 多条，那是几十小时的纯加载时间。
+        from faster_whisper import BatchedInferencePipeline, WhisperModel
+        model = WhisperModel(args.model, device=args.device,
+                             compute_type="int8_float16")
+        pipe = BatchedInferencePipeline(model=model)
+
+        def run(path):
+            segs, _ = pipe.transcribe(path, language=args.language, batch_size=16,
+                                      beam_size=5, condition_on_previous_text=False)
+            tick()
+            return "".join(s.text for s in segs)
 
     return eval_manifest(items, run)
 

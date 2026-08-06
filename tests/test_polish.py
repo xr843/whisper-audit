@@ -77,3 +77,21 @@ def test_polish_whitespace_padding_does_not_trigger_length_rejection(monkeypatch
     assert out == "  旧账倒进去 "
     assert rep["length_rejected"] == 0
     assert rep["accepted"] == 1
+
+
+def test_constrain_records_every_edit_with_position():
+    """LLM 改正文的记账标准不能低于术语表——每处改动要能逐条找到。"""
+    out, rep = P.constrain("旧帐和往帐都要查", "旧账和往账都要查")
+    assert out == "旧账和往账都要查"
+    assert rep["edits"] == [{"pos": 1, "from": "帐", "to": "账"},
+                            {"pos": 4, "from": "帐", "to": "账"}]
+
+
+def test_polish_edit_positions_are_document_offsets(monkeypatch):
+    """跨块时 pos 必须折算成全文偏移，否则审计人按 pos 找会找错块。"""
+    monkeypatch.setattr(P, "_chunks", lambda t, size: [t[:5], t[5:]])
+    monkeypatch.setattr(P, "_call", lambda *a, **k: "旧账倒进去")
+    text = "旧帐倒进去" * 2
+    out, rep = P.polish(text, base_url="x", model="y", api_key="k")
+    assert out == "旧账倒进去旧账倒进去"
+    assert [e["pos"] for e in rep["edits"]] == [1, 6]

@@ -24,20 +24,27 @@ PROMPT = (
 
 
 def constrain(before, after, loose=False):
-    """只放行同音替换。长度不一致整块拒绝。"""
+    """只放行同音替换。长度不一致整块拒绝。
+
+    每一处放行的改动逐条记进 `edits`（位置、原字、新字）——LLM 直接改正文
+    这条路的风险比术语表高（改动来自模型自由发挥，不是可审计的规则），
+    记账标准不能反而更低。同音替换本身可能改变含义（权力/权利、一/亿），
+    审计人要能逐条找到每个字。
+    """
     if len(after) != len(before):
-        return before, {"rejected": 0, "accepted": 0, "reason": "length"}
-    out, rejected, accepted = [], 0, 0
-    for a, b in zip(before, after):
+        return before, {"rejected": 0, "accepted": 0, "reason": "length", "edits": []}
+    out, rejected, edits = [], 0, []
+    for i, (a, b) in enumerate(zip(before, after)):
         if a == b:
             out.append(a)
         elif pinyin_key(a, loose) == pinyin_key(b, loose) and pinyin_key(a, loose) != ():
             out.append(b)
-            accepted += 1
+            edits.append({"pos": i, "from": a, "to": b})
         else:
             out.append(a)
             rejected += 1
-    return "".join(out), {"rejected": rejected, "accepted": accepted, "reason": None}
+    return "".join(out), {"rejected": rejected, "accepted": len(edits),
+                          "reason": None, "edits": edits}
 
 
 def _chunks(text, size):
@@ -77,7 +84,7 @@ def polish(text, *, base_url, model, api_key, chunk=1200, dry_run=False,
            loose=False):
     parts = _chunks(text, chunk)
     rep = {"chunks": len(parts), "accepted": 0, "rejected": 0,
-           "length_rejected": 0, "failed": 0}
+           "length_rejected": 0, "failed": 0, "edits": []}
     if dry_run:
         print(f"[dry-run] 将发送 {len(parts)} 块，共 {len(text)} 字")
         print(f"[dry-run] 首块内容：\n{parts[0][:300]}")
@@ -106,5 +113,7 @@ def polish(text, *, base_url, model, api_key, chunk=1200, dry_run=False,
             rep["length_rejected"] += 1
         rep["accepted"] += r["accepted"]
         rep["rejected"] += r["rejected"]
+        base = sum(len(q) for q in out) + len(lead)   # pos 折算成全文偏移
+        rep["edits"].extend({**e, "pos": base + e["pos"]} for e in r["edits"])
         out.append(fixed)
     return "".join(out), rep
