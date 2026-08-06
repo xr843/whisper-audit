@@ -15,12 +15,19 @@ from .render import raw_text, render, terms_hits
 
 # batch=16 必须配 int8_float16：8GB 卡上 fp16+batch16 会 OOM（实测）。
 # int8 本身不提速，它的价值就是省出显存来开大 batch —— 那才是提速来源。
+# beam 默认 1（2026-08-06 改，原为 5）。四域实测 beam5 从未赢过像样的：
+#   FLEURS 朗读   7.56 vs 7.57  平
+#   演讲 ZH00004  7.10 vs 4.18  beam1 大胜，删除 685→243
+#   慢速歌唱          90.8 vs 70.9  beam1 大胜，删除 2017→1360
+#   讲课 ZH00005  8.35 vs 8.67  beam5 小胜 0.3pp——但该域应改用 --engine funasr
+# beam search 在困难音频上更容易搜到「整段无语音」的路径整段放弃，
+# 直接违背「不遗漏」的立项目标；还慢 12%。口音域没有直接数据，是剩余不确定性。
 PROFILES = {
     # 单人讲授、音质好：单路 + 补转即可，最快
-    "lecture": {"two_pass": False, "chunk_coarse": 30, "batch": 16, "beam": 5,
+    "lecture": {"two_pass": False, "chunk_coarse": 30, "batch": 16, "beam": 1,
                 "compute": "int8_float16"},
     # 多人问答、口音重、内容重要：双路交叉，最全
-    "meeting": {"two_pass": True, "chunk_coarse": 30, "chunk_fine": 10, "batch": 16, "beam": 5,
+    "meeting": {"two_pass": True, "chunk_coarse": 30, "chunk_fine": 10, "batch": 16, "beam": 1,
                 "compute": "int8_float16"},
     # 只求快。2026-08-06 起用 large-v3-turbo（解码 32 层→4 层）：
     # FLEURS 945 条实测质量代价 0.9pp（7.56%→8.46%），长音频吞吐 62.3x vs 24.5x。
@@ -51,6 +58,11 @@ def add_run_args(ap):
     ap.add_argument("--terms", default=None, help="术语修正表 json")
     ap.add_argument("--title", default=None)
     ap.add_argument("--keep-break", action="store_true", help="不剔除中场休息段")
+    ap.add_argument("--engine", default="whisper", choices=["whisper", "funasr"],
+                    help="主引擎。funasr=SeacoParaformer：SpeechIO 演讲/讲课域实测 "
+                         "CER 2.06%%/2.44%%（whisper 系 4.2~8.7%%）、删除少 6~10 倍、"
+                         "速度更快——**标准普通话内容选它**。whisper 保留为默认：慢速歌唱等"
+                         "困难域 funasr 会崩（见 docs/measurements.md），重口音未实测")
     ap.add_argument("--model", default=None,
                     help="faster-whisper 模型名。默认 large-v3；fast 档默认 turbo。"
                          "显式传入则覆盖档位设置")
@@ -291,17 +303,36 @@ def cmd_run(args):
     # 模型解析：显式 --model > 档位指定 > large-v3
     model_name = args.model or cfg.get("model", "large-v3")
     mk = dict(model_name=model_name, device=args.device, language=args.language)
-    log(f"档位 {args.profile}　模型 {model_name}／{args.device}／{compute}　输出 {outdir}")
+    log(f"档位 {args.profile}　引擎 {args.engine}　模型 {"paraformer" if args.engine == "funasr" else model_name}／{args.device}／{compute}　输出 {outdir}")
 
     wav = prepare_audio(src, work)
     loud = Loudness(wav)
 
-    passes = [transcribe_pass(wav, os.path.join(work, "pass1.json"),
-                              cfg["chunk_coarse"], cfg["batch"], cfg["beam"], compute, **mk)]
-    if cfg["two_pass"]:
-        passes.append(transcribe_pass(wav, os.path.join(work, "pass2.json"),
-                                      cfg["chunk_fine"], cfg["batch"], cfg["beam"],
-                                      compute, **mk))
+    if args.engine == "funasr":
+        # 单路：不同 chunk 的双路是 whisper 特有的权衡，对非自回归引擎无意义。
+        # 补转仍走 whisper——主引擎漏掉的区段拿另一个引擎复核，正好跨引擎互补。
+        p1 = os.path.join(work, "pass1.json")
+        if os.path.exists(p1):
+            log(f"复用已有 {os.path.basename(p1)}")
+            passes = [json.load(open(p1, encoding="utf-8"))]
+        else:
+            from .engines import get_engine
+            log("转录 engine=funasr（SeacoParaformer）…")
+            d = get_engine("funasr", device=args.device).transcribe(wav)
+            json.dump(d, open(p1, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+            log(f"  完成 {len(d['segments'])} 段 / "
+                f"{sum(len(s['text']) for s in d['segments']):,} 字")
+            passes = [d]
+        if cfg["two_pass"]:
+            log("  funasr 引擎为单路，忽略档位的 two_pass")
+    else:
+        passes = [transcribe_pass(wav, os.path.join(work, "pass1.json"),
+                                  cfg["chunk_coarse"], cfg["batch"], cfg["beam"],
+                                  compute, **mk)]
+        if cfg["two_pass"]:
+            passes.append(transcribe_pass(wav, os.path.join(work, "pass2.json"),
+                                          cfg["chunk_fine"], cfg["batch"], cfg["beam"],
+                                          compute, **mk))
 
     dur = passes[0]["duration"]
     rep = audit(passes[0], loud)
@@ -354,7 +385,7 @@ def cmd_run(args):
                if miss else ""))
 
     meta_lines = [
-        f"**转录方式**　faster-whisper {model_name}，{len(passes)} 路交叉 + "
+        f"**转录方式**　{"FunASR SeacoParaformer" if args.engine == "funasr" else "faster-whisper " + model_name}，{len(passes)} 路 + "
         f"{len(rep['spans'])} 处定点补转，取并集。\n",
         f"**覆盖率**　本文档时间覆盖 {fin['cover_pct']:.1f}%，其中字数撑得起的有效语音约 "
         f"{fin['speech_pct']:.1f}%（按 {SPEECH_RATE:.0f} 字/秒估）；"

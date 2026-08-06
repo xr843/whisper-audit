@@ -144,3 +144,16 @@ def test_default_profiles_keep_large_v3():
     默认档不许被悄悄换成快模型。"""
     for name in ("lecture", "meeting"):
         assert "model" not in cli.PROFILES[name]
+
+
+def test_run_engine_flag_exists_with_whisper_default():
+    """funasr 在标准普通话域碾压（SpeechIO 2.06%/2.44% vs whisper 4.2~8.7%），
+    但慢速歌唱域会崩、重口音未测——所以是显式选项，whisper 仍是默认。"""
+    ap = argparse.ArgumentParser(prog="audio-transcribe")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    for name in cli.SUBCOMMANDS:
+        cli._BUILDERS[name](sub.add_parser(name))
+    a = ap.parse_args(["run", "x.wav"])
+    assert a.engine == "whisper"
+    b = ap.parse_args(["run", "x.wav", "--engine", "funasr"])
+    assert b.engine == "funasr"

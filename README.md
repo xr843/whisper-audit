@@ -31,7 +31,15 @@ python3 transcribe.py 录音.mp3 --profile lecture
 
 # 只求快 —— large-v3-turbo，质量代价实测 0.9pp，长音频吞吐 2.5 倍（62x 实时）
 python3 transcribe.py 录音.mp3 --profile fast
+
+# 标准普通话内容（演讲/讲课/会议）—— 商用系引擎，SpeechIO 实测 CER 2.06~2.44%
+# （whisper 系同语料 4.2~8.7%），删除少 6~10 倍，速度更快
+python3 transcribe.py 录音.mp3 --engine funasr
 ```
+
+**引擎怎么选**：标准普通话、录音干净 → `--engine funasr`（质量速度双优）；
+口音重、内容类型未知、慢速歌唱歌唱 → 默认 whisper（funasr 在慢速歌唱域会崩，
+口音域未实测；数据见 [docs/measurements.md](docs/measurements.md)）。
 
 其他参数：`--model`（默认 large-v3）、`--device cuda|cpu`、`--compute`（覆盖档位量化）、
 `--language`（默认 zh）、`--keep-break`（不剔除休息段）、`--title`、`-o`。
