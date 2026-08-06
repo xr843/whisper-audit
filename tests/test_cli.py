@@ -116,3 +116,31 @@ def test_polish_dry_run_does_not_need_a_key(monkeypatch):
         cli._BUILDERS[name](sub.add_parser(name))
     a = ap.parse_args(["run", "x.wav", "--polish-dry-run"])
     assert a.polish_dry_run and not a.polish
+
+
+def test_fast_profile_selects_turbo_model():
+    """fast 档 2026-08-06 起用 turbo：质量代价已量化（FLEURS 0.9pp），
+    长音频吞吐 62.3x vs 24.5x。旧方案 beam=1 只快 12% 且损失从未量化。"""
+    cfg = cli.PROFILES["fast"]
+    assert "turbo" in cfg["model"]
+    assert cfg["beam"] == 5, "turbo 的速度来自减层，不必再拿 beam=1 牺牲质量"
+
+
+def test_explicit_model_overrides_profile(monkeypatch):
+    """显式 --model 必须压过档位里的 model 字段。"""
+    ap = argparse.ArgumentParser(prog="audio-transcribe")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    for name in cli.SUBCOMMANDS:
+        cli._BUILDERS[name](sub.add_parser(name))
+    a = ap.parse_args(["run", "x.wav", "--profile", "fast", "--model", "large-v3"])
+    cfg = cli.PROFILES[a.profile]
+    assert (a.model or cfg.get("model", "large-v3")) == "large-v3"
+    b = ap.parse_args(["run", "x.wav", "--profile", "fast"])
+    assert (b.model or cfg.get("model", "large-v3")).endswith("turbo")
+
+
+def test_default_profiles_keep_large_v3():
+    """质量榜首是 large-v3（FLEURS 7.56% vs turbo/paraformer 8.45~8.46%）——
+    默认档不许被悄悄换成快模型。"""
+    for name in ("lecture", "meeting"):
+        assert "model" not in cli.PROFILES[name]

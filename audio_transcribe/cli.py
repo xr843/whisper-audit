@@ -22,9 +22,12 @@ PROFILES = {
     # 多人问答、口音重、内容重要：双路交叉，最全
     "meeting": {"two_pass": True, "chunk_coarse": 30, "chunk_fine": 10, "batch": 16, "beam": 5,
                 "compute": "int8_float16"},
-    # 只求快（质量有代价，专业术语多的内容不建议）
-    "fast": {"two_pass": False, "chunk_coarse": 30, "batch": 16, "beam": 1,
-             "compute": "int8_float16"},
+    # 只求快。2026-08-06 起用 large-v3-turbo（解码 32 层→4 层）：
+    # FLEURS 945 条实测质量代价 0.9pp（7.56%→8.46%），长音频吞吐 62.3x vs 24.5x。
+    # 旧方案（large-v3 + beam=1）只快 12% 且质量损失没量化过——turbo 两头都赢。
+    "fast": {"two_pass": False, "chunk_coarse": 30, "batch": 16, "beam": 5,
+             "compute": "int8_float16",
+             "model": "mobiuslabsgmbh/faster-whisper-large-v3-turbo"},
 }
 
 # 计划里还有一个 accurate 档，**故意没有加**。
@@ -48,7 +51,9 @@ def add_run_args(ap):
     ap.add_argument("--terms", default=None, help="术语修正表 json")
     ap.add_argument("--title", default=None)
     ap.add_argument("--keep-break", action="store_true", help="不剔除中场休息段")
-    ap.add_argument("--model", default="large-v3", help="faster-whisper 模型名")
+    ap.add_argument("--model", default=None,
+                    help="faster-whisper 模型名。默认 large-v3；fast 档默认 turbo。"
+                         "显式传入则覆盖档位设置")
     ap.add_argument("--device", default="cuda", choices=["cuda", "cpu", "auto"])
     ap.add_argument("--compute", default=None, help="覆盖档位里的 compute_type")
     ap.add_argument("--language", default="zh")
@@ -283,8 +288,10 @@ def cmd_run(args):
     terms = json.load(open(args.terms, encoding="utf-8")) if args.terms else {}
     cfg = PROFILES[args.profile]
     compute = args.compute or (cfg["compute"] if args.device != "cpu" else "int8")
-    mk = dict(model_name=args.model, device=args.device, language=args.language)
-    log(f"档位 {args.profile}　模型 {args.model}／{args.device}／{compute}　输出 {outdir}")
+    # 模型解析：显式 --model > 档位指定 > large-v3
+    model_name = args.model or cfg.get("model", "large-v3")
+    mk = dict(model_name=model_name, device=args.device, language=args.language)
+    log(f"档位 {args.profile}　模型 {model_name}／{args.device}／{compute}　输出 {outdir}")
 
     wav = prepare_audio(src, work)
     loud = Loudness(wav)
@@ -347,7 +354,7 @@ def cmd_run(args):
                if miss else ""))
 
     meta_lines = [
-        f"**转录方式**　faster-whisper {args.model}，{len(passes)} 路交叉 + "
+        f"**转录方式**　faster-whisper {model_name}，{len(passes)} 路交叉 + "
         f"{len(rep['spans'])} 处定点补转，取并集。\n",
         f"**覆盖率**　本文档时间覆盖 {fin['cover_pct']:.1f}%，其中字数撑得起的有效语音约 "
         f"{fin['speech_pct']:.1f}%（按 {SPEECH_RATE:.0f} 字/秒估）；"
