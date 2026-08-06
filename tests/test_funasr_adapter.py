@@ -6,14 +6,14 @@ from audio_transcribe.engines.funasr import to_segments
 
 
 def test_real_shape_char_level_timestamps_become_words():
-    raw = [{"key": "x", "text": "菩 萨 相 品",
+    raw = [{"key": "x", "text": "转 录 文 本",
             "timestamp": [[53150, 53330], [53330, 53550], [53550, 53770], [53770, 54000]]}]
     segs = to_segments(raw)
     assert len(segs) == 1
     s = segs[0]
-    assert s["text"] == "××相品"
+    assert s["text"] == "转录文本"
     assert s["start"] == 53.15 and s["end"] == 54.0
-    assert [w["word"] for w in s["words"]] == ["菩", "萨", "相", "品"]
+    assert [w["word"] for w in s["words"]] == ["转", "录", "文", "本"]
     assert s["words"][0]["start"] == 53.15
 
 
