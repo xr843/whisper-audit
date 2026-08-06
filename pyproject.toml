@@ -35,6 +35,7 @@ dependencies = [
     "rapidfuzz>=3.9",
     "jieba>=0.42",
     "numpy>=1.24",
+    "scikit-learn>=1.3",   # 说话人分离的凝聚聚类；纯 CPU，CI 装得动
 ]
 
 [project.optional-dependencies]

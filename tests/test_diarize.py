@@ -6,9 +6,13 @@
 单测里调用——同 tests/test_funasr_adapter.py 对 FunASREngine 的处理方式：
 纯函数单测到位，真机验证走 diarize-report.md。
 """
+import json
+import pathlib
+
 import numpy as np
 import pytest
 
+from audio_transcribe import diarize as D
 from audio_transcribe.diarize import (
     _label_names,
     _slice_audio,
@@ -274,3 +278,45 @@ def test_row_order_is_preserved_regardless_of_input_order(wav16k):
 
     out = assign_speakers(rows, wav16k, embed_fn=fn, min_dur=0.5)
     assert [r["text"] for r in out] == ["乙", "甲"]
+
+
+# ---------------------------------------------------------------- 真机声纹回归
+
+_FIX = pathlib.Path(__file__).parent / "fixtures"
+
+
+def _real_embeddings():
+    import numpy as np
+    return (np.load(_FIX / "spk_embeddings_2spk.npy"),
+            json.loads((_FIX / "spk_truth_2spk.json").read_text(encoding="utf-8")))
+
+
+def test_two_real_speakers_are_separated_at_default_threshold():
+    """真机声纹回归：两位不同讲者各 12 段（正常语速），默认阈值必须分得开。
+
+    这条测试的由来：阈值第一版按「慢速歌唱 + 讲解交替」的单人录音标定成 0.95，
+    而那个域项目自己声明不支持。拿域外音频标定的结果是——两个真人被并成一簇，
+    说话人分离功能直接失效。夹具是那 24 段的真实 cam++ 声纹（192 维），
+    纯 CPU 可跑，不需要模型和 GPU。
+    """
+    E, truth = _real_embeddings()
+    labels = D.cluster_speakers(E)
+    assert len(set(labels)) == 2, f"两个真人应当分成 2 簇，实得 {len(set(labels))}"
+    # 簇标签与真值一一对应（不关心哪个簇叫什么）
+    pairs = set(zip(labels, truth))
+    assert len(pairs) == 2, f"簇与说话人不是一一对应：{sorted(pairs)}"
+
+
+def test_real_speaker_separation_has_margin_not_knife_edge():
+    """0.40~0.80 都该全对——阈值不是走钢丝调出来的，有实测余量。"""
+    E, truth = _real_embeddings()
+    for th in (0.4, 0.5, 0.6, 0.7, 0.8):
+        labels = D.cluster_speakers(E, threshold=th)
+        assert len(set(labels)) == 2, f"阈值 {th} 下分成了 {len(set(labels))} 簇"
+
+
+def test_explicit_speaker_count_overrides_threshold_on_real_embeddings():
+    """自动定数不理想时，n_speakers 是逃生舱——真机声纹上必须严格生效。"""
+    E, _ = _real_embeddings()
+    for n in (1, 2, 3):
+        assert len(set(D.cluster_speakers(E, n_speakers=n))) == n
