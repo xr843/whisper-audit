@@ -20,7 +20,7 @@ def test_exact_homophone_is_corrected():
 
 
 def test_near_homophone_is_corrected_when_loose():
-    """厂所(chang suo) vs 场所(chang suo)——同音；中大 vs 大型靠近音。"""
+    """厂所(chang suo) vs 场所(chang suo)——同音。"""
     out, _ = T.pinyin_fix("大型活动厂所登记", TERMS)
     assert out == "大型活动场所登记"
 
@@ -58,7 +58,7 @@ def test_empty_terms_is_noop():
 def test_real_termlist_does_not_touch_unrelated_text():
     """过度触发验证（brief 未要求，自行加）：
 
-    真实术语表的 terms（当前 44 条） 覆盖财税/大型场所行政词汇，与日常口语在拼音上
+    真实术语表的 terms（当前 44 条） 覆盖财税/场所行政词汇，与日常口语在拼音上
     没有交集。拿一段不含任何术语的普通中文过一遍，必须一个字都不改——
     这是拼音模糊匹配最大的风险（误伤正常文本）的护栏。
     """

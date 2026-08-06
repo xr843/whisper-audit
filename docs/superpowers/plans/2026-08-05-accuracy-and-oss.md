@@ -854,7 +854,7 @@ def test_exact_homophone_is_corrected():
 
 
 def test_near_homophone_is_corrected_when_loose():
-    """厂所(chang suo) vs 场所(chang suo)——同音；中大 vs 大型靠近音。"""
+    """厂所(chang suo) vs 场所(chang suo)——同音。"""
     out, _ = T.pinyin_fix("大型活动厂所登记", TERMS)
     assert out == "大型活动场所登记"
 

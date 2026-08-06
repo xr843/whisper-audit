@@ -34,7 +34,7 @@ def test_homophone_substitution_is_measured():
 
 
 def test_near_homophone_catches_accent_confusion():
-    """方言口音把 zh 读成 z：账(zhang)→赃(zang) 不同音但近音。"""
+    """南方方言口音把 zh 读成 z：账(zhang)→赃(zang) 不同音但近音。"""
     r = E.score("旧账", "旧赃")
     assert r["sub"] == 1
     assert r["homo"] == 0
