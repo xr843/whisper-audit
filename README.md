@@ -1,16 +1,6 @@
 # audio-transcribe
 
-> **English summary.** A long-audio Chinese transcription pipeline built for
-> *completeness*: it audits the timeline for coverage gaps by measuring actual
-> loudness, detects speech swallowed *inside* segments, re-transcribes only the
-> problem spans, and ships its own character-level CER evaluation harness.
-> Two engines — whisper large-v3 (robust default) and FunASR Paraformer
-> (**2.06–2.44% CER on SpeechIO sets**, commercial-API territory). Runs offline
-> on a local GPU or **CPU-only (3.2× realtime)**; audio never leaves the machine.
-> Every default is backed by a measured number; `docs/` keeps the receipts.
->
-> `pip install -e ".[whisper]"` then `audio-transcribe run recording.mp3`.
-> Docs are in Chinese; the code and CLI are not.
+**[English](README.en.md) · [中文](README.md)**
 
 中文长音频 → 文稿/字幕。目标是**不遗漏**，不是「转一遍」：
 自动审计漏转、定点补转、可选说话人标注，并给你一把可复现的正确率尺子。
@@ -144,7 +134,7 @@ key 只从环境变量 `AUDIO_TRANSCRIBE_LLM_KEY` 读。
 
 ## 深入阅读
 
-- **[docs/lessons.md](docs/lessons.md)** —— 16 条实测踩坑记录：VAD 误杀、静音幻觉、
+- **[docs/lessons.md](docs/lessons.md)** —— 19 条实测踩坑记录：VAD 误杀、静音幻觉、
   段内饥饿、合并陷阱、性能真相……每一条都是测出来的，不是文档推理。
   **这份记录是本项目真正的价值所在。**
 - **[docs/measurements.md](docs/measurements.md)** —— 全部实测数字与每个默认值的
@@ -154,16 +144,17 @@ key 只从环境变量 `AUDIO_TRANSCRIBE_LLM_KEY` 读。
 
 ```bash
 pip install -e ".[dev]"       # 纯 CPU 核心依赖，不装 ASR 后端
-python3 -m pytest tests/ -q   # 148 tests + 1 xfail，秒级，无需 GPU/音频
+python3 -m pytest tests/ -q   # 195 tests + 1 xfail，秒级，无需 GPU/音频
 ```
 
 ```
 audio_transcribe/
-  cli.py         命令行与主流程          engines/   ASR 后端（whisper / funasr）
+  cli.py         命令行与主流程          engines/   ASR 后端（whisper/funasr/qwen）
   audio.py       转码 + 音量测量          audit.py   空洞 / 幻觉 / 段内饥饿 / 终审
   merge.py       多路合并与去重           render.py  标点 / 分段 / 出稿 / 字幕重切
   evaluate.py    字级 CER 与增删改分解     goldset.py 待校对稿生成与评测入口
   terms.py       术语表：字面 + 拼音       polish.py  LLM 同音校订（拼音硬约束）
+  diarize.py     声纹抽取与说话人聚类
 ```
 
 MIT License.
