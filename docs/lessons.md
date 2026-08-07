@@ -1,6 +1,6 @@
 # 踩过的坑——实测工程记录
 
-> 本文是 whisperaudit 的实测教训全集：16 条坑，每一条都来自真实录音上的
+> 本文是 whisperaudit 的实测教训全集：21 条坑，每一条都来自真实录音上的
 > 测量，不是照文档推理。各项数字的完整口径见 [measurements.md](measurements.md)。
 
 ## 为什么不是一行 API 调用
