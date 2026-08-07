@@ -220,7 +220,11 @@ add or remove content — but a homophone swap can still change meaning
 
 Both are in Chinese; the code, CLI and this README are not.
 
-## Development
+## Contributing
+
+PRs welcome. Setup, testing discipline, and where help is most needed:
+[CONTRIBUTING.md](CONTRIBUTING.md).
+
 
 ```bash
 pip install -e ".[dev]"        # pure-CPU core deps, no ASR backend

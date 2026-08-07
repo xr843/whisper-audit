@@ -155,7 +155,11 @@ key 只从环境变量 `WHISPERAUDIT_LLM_KEY` 读。
 - **[docs/measurements.md](docs/measurements.md)** —— 全部实测数字与每个默认值的
   判定依据，包括被推翻过的结论（原样保留）
 
-## 开发
+## 参与开发
+
+欢迎 PR。开发环境、测试纪律与当前最需要的贡献方向见
+[CONTRIBUTING.md](CONTRIBUTING.md)。
+
 
 ```bash
 pip install -e ".[dev]"       # 纯 CPU 核心依赖，不装 ASR 后端
