@@ -62,8 +62,8 @@ dev = ["pytest>=8.0", "soundfile>=0.12"]   # soundfile：float32 WAV 测试夹�
 [project.urls]
 Homepage = "https://github.com/xr843/whisper-audit"
 Repository = "https://github.com/xr843/whisper-audit"
-"实测数据" = "https://github.com/xr843/whisper_audit/blob/master/docs/measurements.md"
-"踩坑记录" = "https://github.com/xr843/whisper_audit/blob/master/docs/lessons.md"
+"实测数据" = "https://github.com/xr843/whisper-audit/blob/master/docs/measurements.md"
+"踩坑记录" = "https://github.com/xr843/whisper-audit/blob/master/docs/lessons.md"
 
 [project.scripts]
 whisper-audit = "whisper_audit.cli:main"
