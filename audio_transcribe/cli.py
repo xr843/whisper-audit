@@ -13,6 +13,10 @@ from .render import raw_text, render, terms_hits
 
 # ---------------------------------------------------------------- 参数档
 
+# 非 whisper 引擎的模型名是固定的，日志与出稿说明里直接报全称；
+# whisper 走 --model/档位解析，所以不在这张表里（get 会落到 model_name）。
+ENGINE_LABEL = {"funasr": "FunASR SeacoParaformer", "qwen": "Qwen3-ASR-0.6B"}
+
 # batch=16 必须配 int8_float16：8GB 卡上 fp16+batch16 会 OOM（实测）。
 # int8 本身不提速，它的价值就是省出显存来开大 batch —— 那才是提速来源。
 # beam 默认 1（2026-08-06 改，原为 5）。四域实测 beam5 从未赢过像样的：
@@ -58,7 +62,7 @@ def add_run_args(ap):
     ap.add_argument("--terms", default=None, help="术语修正表 json")
     ap.add_argument("--title", default=None)
     ap.add_argument("--keep-break", action="store_true", help="不剔除中场休息段")
-    ap.add_argument("--engine", default="whisper", choices=["whisper", "funasr"],
+    ap.add_argument("--engine", default="whisper", choices=["whisper", "funasr", "qwen"],
                     help="主引擎。funasr=SeacoParaformer：SpeechIO 演讲/讲课域实测 "
                          "CER 2.06%%/2.44%%（whisper 系 4.2~8.7%%）、删除少 6~10 倍、"
                          "速度更快——**标准普通话内容选它**。whisper 保留为默认：慢速歌唱等"
@@ -76,6 +80,11 @@ def add_run_args(ap):
     ap.add_argument("--loose-pinyin", action="store_true",
                     help="拼音纠错启用近音归并（zh/z、ang/an…）。"
                          "能多修几处，但词边界误伤风险更高，默认关")
+    ap.add_argument("--diarize", action="store_true",
+                    help="标注说话人（cam++ 声纹聚类）。只加标签，绝不改正文；"
+                         "只认出一人时不标")
+    ap.add_argument("--speakers", type=int, default=None,
+                    help="已知说话人数，配合 --diarize；默认按声纹距离自动定")
     ap.add_argument("--polish", action="store_true",
                     help="出稿前过一遍 LLM 同音校订。默认关；正文会发往你指定的 endpoint")
     ap.add_argument("--polish-dry-run", action="store_true",
@@ -102,7 +111,7 @@ def add_eval_args(ap):
                     help="公开集 jsonl（每行 {\"audio\":…, \"text\":…}），"
                          "与 --gold/--hyp 二选一")
     ap.add_argument("--json", default=None, help="把报告写成 json")
-    ap.add_argument("--engine", default="whisper", choices=["whisper", "funasr"],
+    ap.add_argument("--engine", default="whisper", choices=["whisper", "funasr", "qwen"],
                     help="仅 --manifest 时用：拿哪个引擎跑公开集")
     ap.add_argument("--model", default="large-v3", help="仅 --manifest 时用")
     ap.add_argument("--device", default="cuda", help="仅 --manifest 时用")
@@ -173,9 +182,9 @@ def _eval_manifest(args):
         if done[0] % 100 == 0:
             log(f"  {done[0]}/{len(items)}")
 
-    if args.engine == "funasr":
+    if args.engine != "whisper":
         from .engines import get_engine
-        eng = get_engine("funasr", device=args.device)
+        eng = get_engine(args.engine, device=args.device)
 
         def run(path):
             d = eng.transcribe(path)
@@ -303,12 +312,12 @@ def cmd_run(args):
     # 模型解析：显式 --model > 档位指定 > large-v3
     model_name = args.model or cfg.get("model", "large-v3")
     mk = dict(model_name=model_name, device=args.device, language=args.language)
-    log(f"档位 {args.profile}　引擎 {args.engine}　模型 {"paraformer" if args.engine == "funasr" else model_name}／{args.device}／{compute}　输出 {outdir}")
+    log(f"档位 {args.profile}　引擎 {args.engine}　模型 {ENGINE_LABEL.get(args.engine, model_name)}／{args.device}／{compute}　输出 {outdir}")
 
     wav = prepare_audio(src, work)
     loud = Loudness(wav)
 
-    if args.engine == "funasr":
+    if args.engine != "whisper":
         # 单路：不同 chunk 的双路是 whisper 特有的权衡，对非自回归引擎无意义。
         # 补转仍走 whisper——主引擎漏掉的区段拿另一个引擎复核，正好跨引擎互补。
         p1 = os.path.join(work, "pass1.json")
@@ -317,14 +326,14 @@ def cmd_run(args):
             passes = [json.load(open(p1, encoding="utf-8"))]
         else:
             from .engines import get_engine
-            log("转录 engine=funasr（SeacoParaformer）…")
-            d = get_engine("funasr", device=args.device).transcribe(wav)
+            log(f"转录 engine={args.engine}…")
+            d = get_engine(args.engine, device=args.device).transcribe(wav)
             json.dump(d, open(p1, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
             log(f"  完成 {len(d['segments'])} 段 / "
                 f"{sum(len(s['text']) for s in d['segments']):,} 字")
             passes = [d]
         if cfg["two_pass"]:
-            log("  funasr 引擎为单路，忽略档位的 two_pass")
+            log(f"  {args.engine} 引擎为单路，忽略档位的 two_pass")
     else:
         passes = [transcribe_pass(wav, os.path.join(work, "pass1.json"),
                                   cfg["chunk_coarse"], cfg["batch"], cfg["beam"],
@@ -364,6 +373,23 @@ def cmd_run(args):
     if fin["starved"]:
         log("  ⚠ 仍有段落时长撑不起字数，补转没能捞回来，出稿前请对照 .srt 回听这些位置")
 
+    n_spk = 0
+    if args.diarize:
+        # 放在最后：说话人标注只读 rows 的时间、只写 speaker 字段，
+        # 跑在正文全部定稿之后，出问题也影响不到一个字。
+        # 整段 try 包住是刻意的——真实录音跑一小时才走到这里，绝不能
+        # 因为「可选标注」的模型没下载/显存不够，把已经转好的稿子搞没。
+        try:
+            from .diarize import assign_speakers
+            assign_speakers(rows, wav, n_speakers=args.speakers, device=args.device)
+            seen = [r.get("speaker") for r in rows]
+            n_spk = len({s for s in seen if s})
+            log(f"说话人分离：{n_spk} 人"
+                + (f"，{sum(1 for s in seen if not s)} 段未定" if not all(seen) else "")
+                + ("　（只认出一人，出稿不加标签）" if n_spk < 2 else ""))
+        except Exception as e:
+            log(f"  ⚠ 说话人分离失败（{type(e).__name__}: {e}），跳过，正文不受影响")
+
     prep = None
     if args.polish or args.polish_dry_run:
         prep, polish_hits = run_polish(rows, terms, args)
@@ -385,7 +411,7 @@ def cmd_run(args):
                if miss else ""))
 
     meta_lines = [
-        f"**转录方式**　{"FunASR SeacoParaformer" if args.engine == "funasr" else "faster-whisper " + model_name}，{len(passes)} 路 + "
+        f"**转录方式**　{ENGINE_LABEL.get(args.engine) or "faster-whisper " + model_name}，{len(passes)} 路 + "
         f"{len(rep['spans'])} 处定点补转，取并集。\n",
         f"**覆盖率**　本文档时间覆盖 {fin['cover_pct']:.1f}%，其中字数撑得起的有效语音约 "
         f"{fin['speech_pct']:.1f}%（按 {SPEECH_RATE:.0f} 字/秒估）；"
@@ -405,6 +431,10 @@ def cmd_run(args):
             "护栏只允许同音替换（读音不同的改动一律还原），因此不会增删内容；"
             "但**同音替换本身可能改变含义**（如 权力/权利、定金/订金、一/亿），"
             "这一档的改动请对照质检报告逐条核对。\n")
+    if n_spk >= 2:
+        meta_lines.append(
+            f"**说话人**　按声纹自动聚类为 {n_spk} 人，标为 S1…S{n_spk}（按出场顺序）。"
+            "标签是推定的，且短促插话容易归错人；标签只是标注，未改动任何正文文字。\n")
     meta_lines.append("**注意**　语音识别对专有名词与专业术语存在同音误识，"
                       f"已按术语表统一校正可确定者（其中拼音级纠错 {len(pyhits)} 处，"
                       "逐条列在质检报告的 pinyin_fixes 里），不能确定者保留原样。"

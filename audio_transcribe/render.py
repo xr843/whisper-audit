@@ -161,6 +161,23 @@ def terms_hits(text, terms):
     return {a: text.count(a) for a, _ in terms.get("fixes", [])}
 
 
+def speaker_labels(speakers):
+    """段落级说话人标签：换人时才出现，同一人连续段不重复。
+
+    整场只认出一个说话人（或全未知）时**一个标签都不加**——单人录音里
+    满屏「S1」是纯噪声，而不是信息。`None`（短段没锚点、没敢定人）留空，
+    不猜；且 `None` 会打断连续性，其后的同一说话人重新打标签，因为中间
+    那段究竟是谁说的本来就不知道。
+    """
+    if len({s for s in speakers if s}) < 2:
+        return [""] * len(speakers)
+    out, prev = [], object()          # 哨兵：保证第一段一定打标签
+    for s in speakers:
+        out.append(s if s and s != prev else "")
+        prev = s
+    return out
+
+
 def render(rows, dur, outdir, title, terms, meta):
     lead = terms.get("clause_lead") or DEFAULT_LEAD
 
@@ -176,47 +193,56 @@ def render(rows, dur, outdir, title, terms, meta):
         return t
 
     cg, pg = gap_thresholds(rows)
-    paras, cur, cur_start, prev_end = [], [], None, None
+    paras, cur, cur_start, prev_end, cur_spk = [], [], None, None, None
     for r in rows:
         # 段内先按词间停顿补标点，再交给 tidy 收尾
         t = punctuate_row(r, cg, pg).strip()
         if not t:
             continue
+        spk = r.get("speaker")
         gap = (r["start"] - prev_end) if prev_end is not None else 0.0
-        if cur and (gap >= 1.5 or sum(len(x) for x in cur) >= 220):
-            paras.append((cur_start, prev_end, "".join(cur)))
+        # 换人必须断段：把两个人的话粘进同一段，读起来就成了一个人说的，
+        # 这是**伪造发言归属**，比不分段严重得多
+        if cur and (gap >= 1.5 or sum(len(x) for x in cur) >= 220 or spk != cur_spk):
+            paras.append((cur_start, prev_end, "".join(cur), cur_spk))
             cur, cur_start = [], None
         if cur_start is None:
-            cur_start = r["start"]
+            cur_start, cur_spk = r["start"], spk
         elif gap >= 0.30:
             if not (cur and cur[-1] and cur[-1][-1] in "，。！？、；："):
                 cur.append("，" if gap < 0.80 else "。")
         cur.append(t)
         prev_end = r["end"]
     if cur:
-        paras.append((cur_start, prev_end, "".join(cur)))
-    paras = [(a, b, tidy(t)) for a, b, t in paras]
-    nchar = sum(len(t) for _, _, t in paras)
+        paras.append((cur_start, prev_end, "".join(cur), cur_spk))
+    paras = [(a, b, tidy(t), s) for a, b, t, s in paras]
+    labels = speaker_labels([s for *_, s in paras])
+    nchar = sum(len(t) for _, _, t, _ in paras)
 
     md = [f"# {title}", "", "**录音全文转录**", "",
           f"> 录音时长 {hms(dur)}（{dur/3600:.2f} 小时）　正文约 {nchar:,} 字　共 {len(paras)} 段  ",
           "> 方括号内为录音时间戳，可据此回听核对原音。", "", "---", ""]
-    for a, b, t in paras:
-        md.append(f"**[{hms(a)}]**　{t}\n")
+    for (a, b, t, _), lab in zip(paras, labels):
+        md.append(f"**[{hms(a)}]{' ' + lab if lab else ''}**　{t}\n")
     md += ["\n---\n", "## 附：转录说明\n", meta]
     open(os.path.join(outdir, f"{title}_全文转录.md"), "w", encoding="utf-8").write("\n".join(md))
 
     with open(os.path.join(outdir, f"{title}_全文转录.txt"), "w", encoding="utf-8") as f:
         f.write(f"{title}　录音全文转录\n时长 {hms(dur)}　约 {nchar:,} 字\n\n")
-        for a, b, t in paras:
-            f.write(f"[{hms(a)}] {t}\n\n")
+        for (a, b, t, _), lab in zip(paras, labels):
+            f.write(f"[{hms(a)}]{' ' + lab if lab else ''} {t}\n\n")
 
     def st(x):
         ms = int(round(x * 1000))
         return f"{ms//3600000:02d}:{ms%3600000//60000:02d}:{ms%60000//1000:02d},{ms%1000:03d}"
 
     cues = resplit_rows(rows)
+    # 字幕与正文的标注规则相反：字幕一次只显示一条，观众看不到上一条，
+    # 「换人才标」在这里就成了大部分条目无人可归。多说话人时**每条都标**。
+    multi = len({r.get("speaker") for r in cues if r.get("speaker")}) >= 2
     with open(os.path.join(outdir, f"{title}_字幕.srt"), "w", encoding="utf-8") as f:
         for i, r in enumerate(cues, 1):
-            f.write(f"{i}\n{st(r['start'])} --> {st(r['end'])}\n{r['text']}\n\n")
+            spk = r.get("speaker")
+            text = f"[{spk}] {r['text']}" if multi and spk else r["text"]
+            f.write(f"{i}\n{st(r['start'])} --> {st(r['end'])}\n{text}\n\n")
     return len(paras), nchar, len(cues)
