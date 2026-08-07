@@ -76,3 +76,58 @@ def test_duration_falls_back_to_last_segment_end(tmp_path):
     from whisper_audit.engines.funasr import _duration
     d = _duration(str(tmp_path / "不存在.wav"), [{"end": 12.5}])
     assert d == 12.5
+
+
+# ------------------------------------------------- 长音频分窗（OOM 修复）
+
+def _audio(sr, spec):
+    """spec: [(秒数, 幅度)] → float32 波形。"""
+    import numpy as np
+    return np.concatenate([np.full(int(d * sr), amp, dtype="float32")
+                           for d, amp in spec])
+
+
+def test_short_audio_is_not_split():
+    """短音频必须原样单窗——分窗只为救 OOM，不许改变已验证的短音频路径。"""
+    import numpy as np
+    from whisper_audit.engines.funasr import split_points
+    a = np.ones(16000 * 60, dtype="float32")
+    assert split_points(a, 16000, max_chunk_s=300.0) == [0, len(a)]
+
+
+def test_long_audio_boundaries_land_in_silence():
+    """名义边界附近有停顿时，切点必须挪进停顿里——不许把字从中间切开。
+
+    2026-08-07 实测背景：Paraformer 注意力显存随长度平方增长，
+    15 分钟能跑、34 分钟要 33GiB 直接 OOM。而 README 推荐它转的
+    正是长音频——三个困难域评测同时崩掉才暴露这一点。
+    """
+    from whisper_audit.engines.funasr import split_points
+    sr = 1000
+    # 25s 音频：9.5~10.5s 与 19~20s 是静音，其余响
+    a = _audio(sr, [(9.5, 0.5), (1.0, 0.0), (8.5, 0.5), (1.0, 0.0), (5.0, 0.5)])
+    pts = split_points(a, sr, max_chunk_s=10.0, search_s=2.0)
+    inner = [p / sr for p in pts[1:-1]]
+    assert len(inner) >= 2
+    assert any(9.5 <= t <= 10.5 for t in inner), f"第一刀没落进停顿：{inner}"
+    assert any(19.0 <= t <= 20.0 for t in inner), f"第二刀没落进停顿：{inner}"
+
+
+def test_split_covers_everything_without_overlap():
+    """切点严格递增、首尾覆盖全长——丢样本或重复样本都是静默事故。"""
+    from whisper_audit.engines.funasr import split_points
+    sr = 1000
+    a = _audio(sr, [(35.0, 0.3)])          # 全程响，无停顿可找
+    pts = split_points(a, sr, max_chunk_s=10.0, search_s=2.0)
+    assert pts[0] == 0 and pts[-1] == len(a)
+    assert all(b > a_ for a_, b in zip(pts, pts[1:])), f"切点必须严格递增：{pts}"
+
+
+def test_no_silence_still_splits_near_nominal():
+    """整段都响时退化为按名义位置切——错一两个字远好于 OOM 崩整条。"""
+    from whisper_audit.engines.funasr import split_points
+    sr = 1000
+    a = _audio(sr, [(35.0, 0.3)])
+    pts = split_points(a, sr, max_chunk_s=10.0, search_s=2.0)
+    for a_, b in zip(pts, pts[1:]):
+        assert (b - a_) / sr <= 10.0 + 2.0 + 0.3, "单窗不许超过名义长度+搜索半径"

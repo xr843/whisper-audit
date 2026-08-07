@@ -19,6 +19,42 @@ from . import Engine, register
 MODEL_DIR = ("~/.cache/modelscope/hub/models/iic/"
              "speech_seaco_paraformer_large_asr_nat-zh-cn-16k-common-vocab8404-pytorch")
 
+# 整条喂给 Paraformer 的音频不能超过这个长度——注意力显存随长度**平方**增长。
+# 2026-08-07 实测（8GB 卡）：15 分钟能跑，34 分钟要 33GiB、48 分钟要 35GiB，
+# 直接 OOM（或先撞 cuDNN NOT_SUPPORTED）。而此前所有冒烟都在 5~15 分钟音频上做，
+# 「长音频项目的推荐引擎吃不下长音频」这个事实是三个困难域评测同时崩掉才暴露的。
+# 取 300 秒：远在实测安全线内，且单窗前向本来就快，分窗几乎无速度代价。
+MAX_CHUNK_S = 300.0
+# 窗边界在名义位置 ±3 秒内挪到最安静处，避免把字从中间切开。
+_SEARCH_S = 3.0
+
+
+def split_points(audio, sr, max_chunk_s=MAX_CHUNK_S, search_s=_SEARCH_S):
+    """长音频分窗的切点（样本数），首尾必含 [0, len]。纯函数，可离线测试。
+
+    每个名义边界（i * max_chunk_s）在 ±search_s 范围内滑一个 200ms 窗找
+    RMS 最小处，把切点放在那个窗的中心——句间停顿几乎总能被找到；
+    整段都响（无停顿）时退化为切在名义位置附近，不多想：Paraformer 对
+    截断字的代价是错一两个字，远小于 OOM 崩掉整条。
+    """
+    n = len(audio)
+    max_len = int(max_chunk_s * sr)
+    pts = [0]
+    while n - pts[-1] > max_len:
+        nominal = pts[-1] + max_len
+        win, step = int(0.2 * sr), int(0.05 * sr)
+        lo = max(pts[-1] + win, nominal - int(search_s * sr))
+        hi = min(n - win, nominal + int(search_s * sr))
+        best, best_rms = nominal, float("inf")
+        for s in range(lo, hi - win, step):
+            seg = audio[s:s + win].astype("float64")
+            rms = float((seg * seg).mean())
+            if rms < best_rms:
+                best_rms, best = rms, s + win // 2
+        pts.append(best)
+    pts.append(n)
+    return pts
+
 
 def to_segments(raw, gap_ms=800, max_dur_s=28.0):
     """把 FunASR 原始输出转成流水线的 segment 形状。纯函数，可离线测试。
@@ -74,12 +110,40 @@ class FunASREngine(Engine):
         self._model = None
 
     def transcribe(self, wav, **_):
+        import os
+        import tempfile
+
+        import soundfile as sf
+
         from funasr import AutoModel
         if self._model is None:
             self._model = AutoModel(model=self.model_dir, device=self.device,
                                     disable_update=True)
-        raw = self._model.generate(input=wav, batch_size_s=300)
-        segs = to_segments(raw)
+
+        # 短音频保持原样直接喂路径——这是被真机探测验证过的调用形式，不动它。
+        if sf.info(wav).duration <= MAX_CHUNK_S:
+            segs = to_segments(self._model.generate(input=wav, batch_size_s=300))
+            return {"duration": _duration(wav, segs), "segments": segs}
+
+        # 长音频分窗。窗内仍走「写临时 wav、喂路径」的同一条已验证路径，
+        # 不改用数组输入——那是另一个没探测过的 API 形态。
+        audio, sr = sf.read(wav, dtype="float32", always_2d=False)
+        if getattr(audio, "ndim", 1) > 1:
+            audio = audio.mean(axis=1)
+        pts = split_points(audio, sr)
+        segs = []
+        with tempfile.TemporaryDirectory() as td:
+            for i, (a, b) in enumerate(zip(pts, pts[1:])):
+                p = os.path.join(td, f"chunk{i:03d}.wav")
+                sf.write(p, audio[a:b], sr, subtype="PCM_16")
+                off = a / sr
+                for s in to_segments(self._model.generate(input=p, batch_size_s=300)):
+                    s["start"] += off
+                    s["end"] += off
+                    for w in s["words"]:
+                        w["start"] += off
+                        w["end"] += off
+                    segs.append(s)
         return {"duration": _duration(wav, segs), "segments": segs}
 
 
