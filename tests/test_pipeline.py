@@ -189,6 +189,37 @@ def test_srt_split_keeps_words_at_their_real_time():
     assert cues[1]["start"] >= 99.0
 
 
+def test_srt_defaults_actually_resplit():
+    """锁**默认值**，不只锁显式传参。
+
+    2026-08-07 变异测试发现的空洞：所有字幕测试都显式传 max_dur/max_chars，
+    于是把默认值改成 999/9999 时整个测试套件全绿——而那正是坑 12 记录的
+    事故本身（最长一条字幕 296 秒 / 128 字，没法逐句回听核对）。
+    默认值是真实用户唯一会用到的那组值，必须单独锁。
+    """
+    text = "这是一段很长的话需要按词的时间切成若干条字幕方便逐句核对原音再多加一些字"
+    rows = [{"start": 0.0, "end": 120.0, "text": text,
+             "words": even_words(0.0, 120.0, text)}]
+    cues = render.resplit_rows(rows)          # ← 不传参数
+    assert len(cues) > 1, "默认参数下 120 秒的整段必须被切开"
+    assert all(c["end"] - c["start"] <= 10.0 for c in cues), \
+        "默认 max_dur 应在 10 秒量级；放大到几百秒等于关掉重切"
+    assert "".join(c["text"] for c in cues) == text
+
+
+def test_srt_cue_always_has_positive_duration():
+    """零时长/负时长的字幕条是非法 SRT，播放器会跳过——内容等于丢了。
+
+    防重叠那段把 start 往后推时，可能推过原来的 end。
+    """
+    rows = [{"start": 0.0, "end": 10.0, "text": "前面这条很长"},
+            {"start": 1.0, "end": 1.05, "text": "被夹在中间的极短条"},
+            {"start": 1.02, "end": 1.03, "text": "再来一条更短的"}]
+    cues = render.resplit_rows(rows)
+    for c in cues:
+        assert c["end"] > c["start"], f"字幕条时长非正：{c}"
+
+
 def test_srt_drops_nothing():
     rows = [{"start": 0.0, "end": 5.0, "text": "甲乙丙"},
             {"start": 5.0, "end": 9.0, "text": "丁戊己"}]

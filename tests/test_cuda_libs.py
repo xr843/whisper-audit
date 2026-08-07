@@ -84,3 +84,34 @@ def test_unreadable_root_is_skipped(tmp_path, fake_nvidia):
     good = _make_tree(tmp_path / "good", ["cublas"])
     fake_nvidia(__file__=None, __path__=[str(tmp_path / "gone"), str(good)])
     assert len(nvidia_lib_dirs()) == 1
+
+
+# ------------------------------------------------------------------ 音量测量
+
+def test_short_interval_returns_nan(tmp_path):
+    """短于 50ms 的区间必须返回 NaN，不能返回一个数。
+
+    2026-08-07 变异测试发现这条契约没有任何测试守着。
+    它不是内部细节——`audit()` 靠 `if db != db: continue` 认出「这段太短，
+    量不出可信音量」。改成返回真实 RMS 的话，短段会拿到一个由极少量样本
+    算出的、方差极大的音量值，直接喂给死空气与幻觉判据：
+    偏低就误删真内容，偏高就漏掉幻觉。两个方向都是静默错误。
+    """
+    import math
+    import wave
+
+    import numpy as np
+
+    from whisperaudit.audio import Loudness
+
+    wav = tmp_path / "t.wav"
+    with wave.open(str(wav), "wb") as w:
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(16000)
+        w.writeframes((np.ones(16000, dtype="int16") * 3000).tobytes())
+
+    loud = Loudness(str(wav))
+    try:
+        assert math.isnan(loud.db(0.0, 0.02)), "20ms 区间必须是 NaN"
+        assert not math.isnan(loud.db(0.0, 0.5)), "500ms 区间必须给出真实音量"
+    finally:
+        loud.close()

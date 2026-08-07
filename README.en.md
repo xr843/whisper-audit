@@ -76,11 +76,15 @@ Engines are extras and combinable: `whisper` / `funasr` / `qwen`.
 **Two things a clean machine will hit** (found by cold-start testing on
 2026-08-07, now encoded in the extras):
 
-- **On GPU you need `cuda`.** CTranslate2 does not bundle the CUDA runtime, so
-  `[whisper]` alone fails with `Library libcublas.so.12 is not found` once
-  transcription actually starts. It is a separate extra because those two wheels
-  are ~700MB and CPU-only users shouldn't pay for them — and if you already have
-  torch installed, you don't need it either.
+- **`cuda` is only needed for the whisper engine on GPU.** CTranslate2 does not
+  bundle the CUDA runtime, so `[whisper]` alone fails with
+  `Library libcublas.so.12 is not found` once transcription actually starts.
+  It is a separate extra because those two wheels are ~700MB. `funasr` and
+  `qwen` go through torch, which ships those libraries itself — they don't need
+  `cuda`, and neither does any environment that already has torch.
+- **`qwen` is a heavy install.** `qwen-asr` pins `transformers==4.57.6` exactly
+  (so it will downgrade yours) and hard-depends on gradio and flask. Give it its
+  own venv if anything else in your environment needs a newer transformers.
 - **Behind a SOCKS proxy, add `socks`.** `huggingface_hub` moved to httpx, which
   needs `socksio` to download through a SOCKS proxy.
 
@@ -220,7 +224,7 @@ Both are in Chinese; the code, CLI and this README are not.
 
 ```bash
 pip install -e ".[dev]"        # pure-CPU core deps, no ASR backend
-python3 -m pytest tests/ -q    # 201 tests + 1 xfail, seconds, no GPU or audio needed
+python3 -m pytest tests/ -q    # 208 tests + 1 xfail, seconds, no GPU or audio needed
 ```
 
 The test suite deliberately runs without a GPU or any audio file: engine

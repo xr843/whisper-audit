@@ -50,6 +50,9 @@ whisper = ["faster-whisper>=1.1.0", "ctranslate2>=4.5,<5"]
 cuda = ['nvidia-cublas-cu12; platform_system == "Linux"',
         'nvidia-cudnn-cu12>=9,<10; platform_system == "Linux"']
 funasr = ["funasr>=1.1.0"]
+# ⚠ qwen-asr 把 transformers 钉成 ==4.57.6（精确等号），并硬依赖 gradio + flask。
+# 装它会**强制降级**环境里已有的 transformers。已实测降级后 whisper 与 funasr
+# 仍正常，但如果你的环境还有别的东西需要新版 transformers，请单独建 venv。
 qwen = ["qwen-asr>=0.0.6"]
 # socks：huggingface_hub 换 httpx 后，走 SOCKS 代理下载模型必须额外装 socksio，
 # 否则报 "Using SOCKS proxy, but the 'socksio' package is not installed"。

@@ -146,6 +146,41 @@ def test_default_profiles_keep_large_v3():
         assert "model" not in cli.PROFILES[name]
 
 
+def test_default_profiles_keep_beam_1():
+    """beam 1 是四域实测的结论，不是随手填的，必须锁住。
+
+    2026-08-06 实测 beam5 从未像样地赢过：
+        FLEURS 朗读   7.56 vs 7.57  平
+        演讲 ZH00004  7.10 vs 4.18  beam1 大胜，删除 685→243
+        慢速歌唱      90.8 vs 70.9  beam1 大胜，删除 2017→1360
+        讲课 ZH00005  8.35 vs 8.67  beam5 小胜 0.3pp（该域应改用 funasr）
+
+    beam search 在困难音频上更容易搜到「整段无语音」的路径整段放弃，
+    直接违背「不遗漏」的立项目标；还慢 12%。
+    fast 档是例外（turbo 减层已经够快，见 test_fast_profile_selects_turbo_model）。
+    """
+    for name in ("lecture", "meeting"):
+        assert cli.PROFILES[name]["beam"] == 1, f"{name} 档的 beam 被改动了"
+
+
+def test_meeting_is_two_pass_and_lecture_is_not():
+    """双路交叉是 meeting 档「最全」的全部含义——改掉它默认档就名不副实了。"""
+    assert cli.PROFILES["meeting"]["two_pass"] is True
+    assert cli.PROFILES["lecture"]["two_pass"] is False
+    assert cli.PROFILES["fast"]["two_pass"] is False
+
+
+def test_batch_requires_int8_float16():
+    """batch=16 必须配 int8_float16：8GB 卡上 fp16+batch16 会 OOM（实测）。
+
+    int8 本身不提速，它的价值就是省出显存来开大 batch——那才是提速来源。
+    两者必须成对出现，改单边会直接 OOM 或白白慢下来。
+    """
+    for name, cfg in cli.PROFILES.items():
+        if cfg.get("batch", 1) > 8:
+            assert cfg["compute"] == "int8_float16", f"{name} 档 batch 大但没配 int8_float16"
+
+
 def test_run_engine_flag_exists_with_whisper_default():
     """funasr 在标准普通话域碾压（SpeechIO 2.06%/2.44% vs whisper 4.2~8.7%），
     但慢速歌唱域会崩、重口音未测——所以是显式选项，whisper 仍是默认。"""

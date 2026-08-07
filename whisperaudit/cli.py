@@ -375,6 +375,11 @@ def cmd_run(args):
     if fin["starved"]:
         log("  ⚠ 仍有段落时长撑不起字数，补转没能捞回来，出稿前请对照 .srt 回听这些位置")
 
+    # --speakers 是 --diarize 的参数，单独给等于没说。不静默忽略：
+    # 用户写下这个数就是想要说话人标注，一声不吭地什么都不做最难排查。
+    if args.speakers and not args.diarize:
+        log(f"  ⚠ --speakers {args.speakers} 需要配合 --diarize 才生效，本次已忽略")
+
     n_spk = 0
     if args.diarize:
         # 放在最后：说话人标注只读 rows 的时间、只写 speaker 字段，

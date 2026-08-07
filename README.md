@@ -38,10 +38,13 @@ sudo apt install ffmpeg              # 系统依赖，pip 装不了；macOS: bre
 
 **两个装完才会发现的坑**（2026-08-07 干净机实测踩到，已写进 extras）：
 
-- **GPU 用户必须带 `cuda`**。CTranslate2 不打包 CUDA 运行时，只装 `[whisper]`
-  会在真正开始转录时报 `Library libcublas.so.12 is not found`。
-  单独成 extra 是因为这两个 wheel 近 700MB，纯 CPU 用户不该被迫下载；
-  **已经装了 torch 的环境也不需要**（torch 顺带把库带进来了）。
+- **`cuda` 只有 whisper 引擎的 GPU 用户需要**。CTranslate2 不打包 CUDA 运行时，
+  只装 `[whisper]` 会在真正开始转录时报 `Library libcublas.so.12 is not found`。
+  单独成 extra 是因为这两个 wheel 近 700MB；`funasr` / `qwen` 走 torch，
+  torch 自带这些库，**不需要 `cuda`**；已装 torch 的环境同理。
+- **`qwen` 是重量级安装**：`qwen-asr` 把 `transformers` 钉成 `==4.57.6`
+  （精确等号，会强制降级），并硬依赖 gradio + flask。
+  环境里有别的东西依赖新版 transformers 的话，给它单独建一个 venv。
 - **走 SOCKS 代理的话加 `socks`**。`huggingface_hub` 改用 httpx 后，
   SOCKS 代理下载模型需要额外的 `socksio`，否则报
   `Using SOCKS proxy, but the 'socksio' package is not installed`。
@@ -156,7 +159,7 @@ key 只从环境变量 `WHISPERAUDIT_LLM_KEY` 读。
 
 ```bash
 pip install -e ".[dev]"       # 纯 CPU 核心依赖，不装 ASR 后端
-python3 -m pytest tests/ -q   # 201 tests + 1 xfail，秒级，无需 GPU/音频
+python3 -m pytest tests/ -q   # 208 tests + 1 xfail，秒级，无需 GPU/音频
 ```
 
 ```

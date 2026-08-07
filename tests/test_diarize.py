@@ -172,6 +172,35 @@ def test_assign_speakers_respects_n_speakers(wav16k):
     assert len({r["speaker"] for r in out}) == 2
 
 
+def test_min_dur_default_actually_excludes_short_segments(wav16k):
+    """锁 `min_dur` 的**默认值**，不只锁显式传参。
+
+    2026-08-07 变异测试发现的空洞：全部分离测试都显式写 `min_dur=0.5`，
+    于是把默认值改成 0.0 时整个套件全绿。而默认值是真实用户唯一会碰到的那个。
+
+    默认值失效的后果不是报错，是**静默变差**：0.2 秒的音频抽出来的 x-vector
+    本身就不稳定，硬塞进聚类等于往向量空间里放一个不像任何人的噪声点，
+    最容易把自动定人数带偏（1 个人被拆成 3 个）。
+
+    这里只给 embed_fn 准备 **1 条** 声纹——只有当短段确实被排除在外时，
+    可靠段才恰好 1 条，数量才对得上。默认值一旦放宽，短段也会被要求抽声纹，
+    数量对不上，断言随即失败。
+    """
+    rows = [
+        {"start": 0.0, "end": 2.0, "text": "长段"},        # 2.0s，可靠
+        {"start": 2.0, "end": 2.2, "text": "短插话"},       # 0.2s，默认下应被排除
+    ]
+    seen = {}
+
+    def fn(clips, sr, device):
+        seen["n"] = len(clips)
+        return np.array([np.eye(192)[0]])                  # 只给一条
+
+    out = assign_speakers(rows, wav16k, embed_fn=fn)       # ← 不传 min_dur
+    assert seen["n"] == 1, f"默认 min_dur 下只该给 1 条可靠段抽声纹，实际 {seen['n']}"
+    assert out[1]["speaker"] == out[0]["speaker"], "短段应继承，而不是自己成簇"
+
+
 def test_short_segments_inherit_previous_speaker_label(wav16k):
     rows = [
         {"start": 0.0, "end": 2.0, "text": "长段甲"},      # 可靠，声纹 A
