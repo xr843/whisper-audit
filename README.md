@@ -17,7 +17,17 @@
 | 默认 whisper large-v3 | 4.18% / 8.67% | 4.45% | 243 / 815 |
 
 自发语音用 SpeechIO ZH00004/ZH00005（商用 API 的公开对标集，同集商用约 1.5~3%）。
-**`qwen` 是唯一两个域都不掉队的**；`funasr` 在自发语音上以微弱优势领先。
+
+困难域（台湾腔极快 / 相声噪声重叠 / 直播带货，SpeechIO 各 500 条）：
+
+| 引擎 | 台湾腔+极快 | 相声 | 直播带货 |
+|---|---|---|---|
+| 默认 whisper | **24.63%** | **11.86%** | **14.78%** |
+| `--engine funasr` | 24.88% | 32.76% | 25.69% |
+| `--engine qwen` | 33.99% | 15.05% | 27.10% |
+
+**whisper 困难域全胜，funasr/qwen 各有断崖**——这就是 whisper 当默认的全部理由，
+六个域的数字都在 [docs/measurements.md](docs/measurements.md)。
 
 **审计与补转值多少？** 同一条 73.8 分钟音频做消融（SpeechIO ZH00004）：
 
@@ -95,12 +105,13 @@ whisper-audit run 访谈.mp3 --engine funasr --diarize
 `--speakers N`（已知人数）、`--model`、`--device`、`--language`、`--title`、`-o`，
 详见 `--help`。
 
-**引擎怎么选**：清晰普通话 → `funasr`；体裁不定 → `qwen`；
-口音重、类型未知、歌唱类 → 保持默认 whisper。
+**引擎怎么选**：清晰普通话 → `funasr`（快且最准）；干净的混合体裁短音频 →
+`qwen`（注意：长音频实测仅 0.4~1.2x 实时，不适合长录音）；
+口音重、噪声大、类型未知 → 保持默认 whisper。
 
-whisper 慢且在自发语音上明显更差，仍留作默认是因为它在困难域的兜底行为
-是测过的：`funasr` 在慢速歌唱域会崩，`qwen` 的困难域一个数都没测。
-**默认值的位置留给最稳的，不留给平均分最高的。**
+whisper 在干净普通话上差 2~4 倍，但三个困难域实测全部第一，
+funasr/qwen 各有断崖（32.76% / 33.99%）。
+**默认值的位置留给最稳的，不留给平均分最高的——这句话现在有六个域的数撑着。**
 
 ### 输出
 
@@ -164,7 +175,7 @@ key 只从环境变量 `WHISPER_AUDIT_LLM_KEY` 读。
 
 ## 深入阅读
 
-- **[docs/lessons.md](docs/lessons.md)** —— 22 条实测踩坑记录：VAD 误杀、静音幻觉、
+- **[docs/lessons.md](docs/lessons.md)** —— 24 条实测踩坑记录：VAD 误杀、静音幻觉、
   段内饥饿、合并陷阱、性能真相……每一条都是测出来的，不是文档推理。
   **这份记录是本项目真正的价值所在。**
 - **[docs/measurements.md](docs/measurements.md)** —— 全部实测数字与每个默认值的
@@ -178,7 +189,7 @@ key 只从环境变量 `WHISPER_AUDIT_LLM_KEY` 读。
 
 ```bash
 pip install -e ".[dev]"       # 纯 CPU 核心依赖，不装 ASR 后端
-python3 -m pytest tests/ -q   # 213 tests + 1 xfail，秒级，无需 GPU/音频
+python3 -m pytest tests/ -q   # 217 tests + 1 xfail，秒级，无需 GPU/音频
 ```
 
 ```

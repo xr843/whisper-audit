@@ -23,8 +23,20 @@ Character Error Rate, lower is better:
 
 Spontaneous speech is SpeechIO ZH00004/ZH00005 — the public benchmark commercial
 Chinese ASR APIs are ranked on (commercial systems score roughly 1.5–3% on the
-same sets). **`qwen` is the only engine that holds up in both domains**;
-`funasr` leads spontaneous speech by a hair.
+same sets).
+
+Hard domains (Taiwanese-accented fast speech / crosstalk comedy with laughter
+and overlap / livestream selling with music; 500 clips each):
+
+| Engine | Accent+fast | Crosstalk | Livestream |
+|---|---|---|---|
+| default whisper | **24.63%** | **11.86%** | **14.78%** |
+| `--engine funasr` | 24.88% | 32.76% | 25.69% |
+| `--engine qwen` | 33.99% | 15.05% | 27.10% |
+
+**whisper wins every hard domain; funasr and qwen each fall off a cliff.**
+That is the entire case for whisper as the default — all six domains are in
+[docs/measurements.md](docs/measurements.md).
 
 The deletion column matters more than it looks. Deletions are content the engine
 silently dropped, and whisper drops **6–10× more** of it on spontaneous Chinese
@@ -141,14 +153,15 @@ Other flags: `--terms glossary.json`, `--keep-break`, `--speakers N`,
 
 ### Choosing an engine
 
-Clear Mandarin → `funasr`. Mixed material → `qwen`. Heavy accent, unknown
-material, or singing → keep the whisper default.
+Clear Mandarin → `funasr` (fastest and most accurate there). Clean mixed
+material, short files → `qwen` (measured at only 0.4–1.2× realtime on long
+audio — not for long recordings). Heavy accent, noise, unknown material → keep
+the whisper default.
 
-whisper is slower and clearly worse on spontaneous speech, yet it remains the
-default because its behaviour in *hard* domains is the part that has been
-measured: `funasr` collapses on slow sustained singing, and `qwen` has no
-hard-domain numbers at all. **The default slot belongs to the most predictable
-engine, not the one with the best average.**
+whisper is 2–4× worse on clean Mandarin, but it won all three measured hard
+domains while funasr and qwen each collapsed (32.76% / 33.99%). **The default
+slot belongs to the most predictable engine, not the one with the best
+average — a sentence now backed by numbers from six domains.**
 
 ### Output
 
@@ -227,7 +240,7 @@ add or remove content — but a homophone swap can still change meaning
 
 ## Further reading
 
-- **[docs/lessons.md](docs/lessons.md)** — 22 field-tested traps: VAD killing real
+- **[docs/lessons.md](docs/lessons.md)** — 24 field-tested traps: VAD killing real
   speech, silence hallucinations, intra-segment starvation, merge pitfalls,
   performance measurements that turned out to be contaminated. Each one came
   from a measurement, not from reading documentation. **This file is the most
@@ -246,7 +259,7 @@ PRs welcome. Setup, testing discipline, and where help is most needed:
 
 ```bash
 pip install -e ".[dev]"        # pure-CPU core deps, no ASR backend
-python3 -m pytest tests/ -q    # 213 tests + 1 xfail, seconds, no GPU or audio needed
+python3 -m pytest tests/ -q    # 217 tests + 1 xfail, seconds, no GPU or audio needed
 ```
 
 The test suite deliberately runs without a GPU or any audio file: engine
