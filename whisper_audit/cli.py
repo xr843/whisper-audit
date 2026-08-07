@@ -162,11 +162,19 @@ def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     # 不写子命令时默认走 run，保证 `python3 transcribe.py 录音.mp3` 行为不变。
     # 判据不能用 startswith("-")，否则 `-o 输出目录 录音.mp3` 这种写法会漏掉 run。
-    if argv and argv[0] not in SUBCOMMANDS and argv[0] not in ("-h", "--help"):
+    # --version 也要挡在「默认插 run」之前，否则会被当成 run 的参数报错
+    if argv and argv[0] not in SUBCOMMANDS \
+            and argv[0] not in ("-h", "--help", "--version"):
         argv.insert(0, "run")
 
     ap = argparse.ArgumentParser(prog="whisper-audit",
                                  description="长音频转录流水线（以不遗漏为目标）")
+    try:
+        from importlib.metadata import version as _v
+        _ver = _v("whisper-audit")
+    except Exception:
+        _ver = "0.0.0.dev（源码目录直接运行，未安装）"
+    ap.add_argument("--version", action="version", version=f"%(prog)s {_ver}")
     sub = ap.add_subparsers(dest="cmd", required=True)
     for name in SUBCOMMANDS:
         _BUILDERS[name](sub.add_parser(name, help=_HELP[name]))

@@ -213,3 +213,15 @@ def test_run_engine_flag_exists_with_whisper_default():
     assert a.engine == "whisper"
     b = ap.parse_args(["run", "x.wav", "--engine", "funasr"])
     assert b.engine == "funasr"
+
+
+def test_version_flag_is_not_swallowed_by_run():
+    """--version 必须走顶层，不能被「默认插 run」吞成 run 的参数。
+
+    main() 对不认识的首参一律插 run——--version 恰好会中招：
+    被当成 `run --version` 后 argparse 报「audio 缺失」退出码 2，
+    而用户报 bug 时第一句就是被要求贴 --version 的输出。
+    """
+    with pytest.raises(SystemExit) as e:
+        cli.main(["--version"])
+    assert e.value.code == 0

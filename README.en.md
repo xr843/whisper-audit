@@ -2,6 +2,13 @@
 
 **[English](README.en.md) · [中文](README.md)**
 
+[![PyPI](https://img.shields.io/pypi/v/whisper-audit)](https://pypi.org/project/whisper-audit/)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/xr843/whisper-audit/blob/master/examples/colab_demo.ipynb)
+[![CI](https://github.com/xr843/whisper-audit/actions/workflows/ci.yml/badge.svg)](https://github.com/xr843/whisper-audit/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+**Try without installing**: hit the Colab badge above — a real recording, transcribed in your browser on a free T4 GPU in about 5 minutes.
+
 Long-form Chinese audio → transcript and subtitles. The goal is **leaving nothing
 out**, not "running it through once": the pipeline audits its own output for
 dropped speech, re-transcribes only the problem spans, optionally labels

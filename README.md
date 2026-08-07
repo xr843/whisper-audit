@@ -2,6 +2,13 @@
 
 **[English](README.en.md) · [中文](README.md)**
 
+[![PyPI](https://img.shields.io/pypi/v/whisper-audit)](https://pypi.org/project/whisper-audit/)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/xr843/whisper-audit/blob/master/examples/colab_demo.ipynb)
+[![CI](https://github.com/xr843/whisper-audit/actions/workflows/ci.yml/badge.svg)](https://github.com/xr843/whisper-audit/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+**免安装试用**：点上面的 Open in Colab 徽章，浏览器里 5 分钟跑完一段真实录音（免费 T4 GPU，无需本地环境）。
+
 中文长音频 → 文稿/字幕。目标是**不遗漏**，不是「转一遍」：
 自动审计漏转、定点补转、可选说话人标注，并给你一把可复现的正确率尺子。
 三引擎可选，本机 GPU 或**纯 CPU** 离线运行，音频不出本机。
