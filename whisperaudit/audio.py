@@ -8,19 +8,46 @@ import wave
 from . import log
 
 
+def nvidia_lib_dirs():
+    """pip 装的 NVIDIA 运行时库目录（nvidia/*/lib）。找不到返回空列表。
+
+    `nvidia` 是 PEP 420 **隐式命名空间包**——它没有 `__init__.py`，因此
+    `nvidia.__file__` 是 `None`，只有 `__path__` 可用。
+
+    2026-08-07 冷启动实测踩到：在只装了 `nvidia-cublas-cu12` +
+    `nvidia-cudnn-cu12`（不装 torch）的干净环境里，原先的
+    `os.path.dirname(nvidia.__file__)` 直接抛
+    `TypeError: expected str, bytes or os.PathLike object, not NoneType`，
+    整个 run 崩在第一行。开发机上一直没暴露，纯粹因为那里装了 torch。
+    **而「装 CUDA 库但不装 torch」正是本项目文档推荐的路径。**
+
+    命名空间包的 `__path__` 还可能有多个根（不同 site-packages），一并扫。
+    """
+    try:
+        import nvidia
+    except ImportError:
+        return []
+    roots = list(getattr(nvidia, "__path__", None) or [])
+    if not roots and getattr(nvidia, "__file__", None):
+        roots = [os.path.dirname(nvidia.__file__)]
+    out = []
+    for r in roots:
+        try:
+            names = sorted(os.listdir(r))
+        except OSError:
+            continue
+        out.extend(os.path.join(r, d, "lib") for d in names
+                   if os.path.isdir(os.path.join(r, d, "lib")))
+    return out
+
+
 def ensure_cuda_libs():
-    """CTranslate2 要在运行时找到 cuBLAS/cuDNN，它们随 torch 的 pip 包装在 nvidia/ 下。
+    """CTranslate2 要在运行时找到 cuBLAS/cuDNN，它们是独立的 nvidia-*-cu12 pip 包。
     LD_LIBRARY_PATH 必须在进程启动前生效，所以这里设好后重启自己。
 
     只能从 main() 调用，绝不能放在模块顶层：import 本模块的进程会被 execv 顶替掉，
     实测这会让 pytest 静默退出（退出码 1、零输出）。"""
-    try:
-        import nvidia
-    except ImportError:
-        return
-    p = os.path.dirname(nvidia.__file__)
-    libs = [os.path.join(p, d, "lib") for d in os.listdir(p)
-            if os.path.isdir(os.path.join(p, d, "lib"))]
+    libs = nvidia_lib_dirs()
     if not libs:
         return
     want = ":".join(libs)

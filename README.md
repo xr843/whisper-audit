@@ -30,9 +30,21 @@
 
 ```bash
 git clone https://github.com/xr843/whisperaudit && cd whisperaudit
-pip install -e ".[whisper]"          # 按需选：.[whisper] / .[funasr] / .[qwen]，可组合
+pip install -e ".[whisper,cuda]"     # GPU；纯 CPU 去掉 cuda
 sudo apt install ffmpeg              # 系统依赖，pip 装不了；macOS: brew install ffmpeg
 ```
+
+引擎按需选，可组合：`whisper` / `funasr` / `qwen`。
+
+**两个装完才会发现的坑**（2026-08-07 干净机实测踩到，已写进 extras）：
+
+- **GPU 用户必须带 `cuda`**。CTranslate2 不打包 CUDA 运行时，只装 `[whisper]`
+  会在真正开始转录时报 `Library libcublas.so.12 is not found`。
+  单独成 extra 是因为这两个 wheel 近 700MB，纯 CPU 用户不该被迫下载；
+  **已经装了 torch 的环境也不需要**（torch 顺带把库带进来了）。
+- **走 SOCKS 代理的话加 `socks`**。`huggingface_hub` 改用 httpx 后，
+  SOCKS 代理下载模型需要额外的 `socksio`，否则报
+  `Using SOCKS proxy, but the 'socksio' package is not installed`。
 
 模型首次运行自动下载（large-v3 约 2.9GB）。mp3 / m4a / wav 等常见格式都支持
 （ffmpeg 统一转 16kHz 单声道）。
@@ -134,7 +146,7 @@ key 只从环境变量 `WHISPERAUDIT_LLM_KEY` 读。
 
 ## 深入阅读
 
-- **[docs/lessons.md](docs/lessons.md)** —— 19 条实测踩坑记录：VAD 误杀、静音幻觉、
+- **[docs/lessons.md](docs/lessons.md)** —— 20 条实测踩坑记录：VAD 误杀、静音幻觉、
   段内饥饿、合并陷阱、性能真相……每一条都是测出来的，不是文档推理。
   **这份记录是本项目真正的价值所在。**
 - **[docs/measurements.md](docs/measurements.md)** —— 全部实测数字与每个默认值的
@@ -144,7 +156,7 @@ key 只从环境变量 `WHISPERAUDIT_LLM_KEY` 读。
 
 ```bash
 pip install -e ".[dev]"       # 纯 CPU 核心依赖，不装 ASR 后端
-python3 -m pytest tests/ -q   # 195 tests + 1 xfail，秒级，无需 GPU/音频
+python3 -m pytest tests/ -q   # 201 tests + 1 xfail，秒级，无需 GPU/音频
 ```
 
 ```

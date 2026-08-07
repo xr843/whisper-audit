@@ -39,9 +39,21 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# whisper 引擎本体。CTranslate2 不打包 CUDA 运行时，GPU 用户还要 [cuda]——
+# 2026-08-07 冷启动实测：只装 [whisper] 在干净 GPU 机上必然
+# `RuntimeError: Library libcublas.so.12 is not found`。开发机不暴露，
+# 因为那里另装了 torch 顺带把库带进来了。
 whisper = ["faster-whisper>=1.1.0", "ctranslate2>=4.5,<5"]
+# CUDA 12 运行时。单独成 extra 而不是塞进 whisper：这两个 wheel 近 700MB，
+# 纯 CPU 用户和已有 torch 的用户都不该被迫下载。
+# cudnn 锁 9.x：CTranslate2 4.x 编译时链的就是 cuDNN 9，装 10 会找不到符号。
+cuda = ['nvidia-cublas-cu12; platform_system == "Linux"',
+        'nvidia-cudnn-cu12>=9,<10; platform_system == "Linux"']
 funasr = ["funasr>=1.1.0"]
 qwen = ["qwen-asr>=0.0.6"]
+# socks：huggingface_hub 换 httpx 后，走 SOCKS 代理下载模型必须额外装 socksio，
+# 否则报 "Using SOCKS proxy, but the 'socksio' package is not installed"。
+socks = ["socksio>=1.0"]
 dev = ["pytest>=8.0", "soundfile>=0.12"]   # soundfile：float32 WAV 测试夹具
 
 [project.urls]

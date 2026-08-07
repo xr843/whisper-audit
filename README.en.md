@@ -67,9 +67,22 @@ This one assumes it isn't, and checks:
 
 ```bash
 git clone https://github.com/xr843/whisperaudit && cd whisperaudit
-pip install -e ".[whisper]"      # pick any: .[whisper] / .[funasr] / .[qwen], combinable
-sudo apt install ffmpeg          # system dependency; macOS: brew install ffmpeg
+pip install -e ".[whisper,cuda]"  # GPU; drop `cuda` for CPU-only
+sudo apt install ffmpeg           # system dependency; macOS: brew install ffmpeg
 ```
+
+Engines are extras and combinable: `whisper` / `funasr` / `qwen`.
+
+**Two things a clean machine will hit** (found by cold-start testing on
+2026-08-07, now encoded in the extras):
+
+- **On GPU you need `cuda`.** CTranslate2 does not bundle the CUDA runtime, so
+  `[whisper]` alone fails with `Library libcublas.so.12 is not found` once
+  transcription actually starts. It is a separate extra because those two wheels
+  are ~700MB and CPU-only users shouldn't pay for them — and if you already have
+  torch installed, you don't need it either.
+- **Behind a SOCKS proxy, add `socks`.** `huggingface_hub` moved to httpx, which
+  needs `socksio` to download through a SOCKS proxy.
 
 Models download on first run (large-v3 is ~2.9GB). mp3 / m4a / wav and other
 common formats work — ffmpeg normalizes everything to 16kHz mono.
@@ -192,7 +205,7 @@ add or remove content — but a homophone swap can still change meaning
 
 ## Further reading
 
-- **[docs/lessons.md](docs/lessons.md)** — 19 field-tested traps: VAD killing real
+- **[docs/lessons.md](docs/lessons.md)** — 20 field-tested traps: VAD killing real
   speech, silence hallucinations, intra-segment starvation, merge pitfalls,
   performance measurements that turned out to be contaminated. Each one came
   from a measurement, not from reading documentation. **This file is the most
@@ -207,7 +220,7 @@ Both are in Chinese; the code, CLI and this README are not.
 
 ```bash
 pip install -e ".[dev]"        # pure-CPU core deps, no ASR backend
-python3 -m pytest tests/ -q    # 195 tests + 1 xfail, seconds, no GPU or audio needed
+python3 -m pytest tests/ -q    # 201 tests + 1 xfail, seconds, no GPU or audio needed
 ```
 
 The test suite deliberately runs without a GPU or any audio file: engine

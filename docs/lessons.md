@@ -349,4 +349,45 @@ whisper 给真实的 `avg_logprob`，这段逻辑正常工作。
 坑 18 那条修复留着是因为它零成本，但文档里写清楚了它在真实复验中**没有触发过**——
 一个从没触发过的安全网，不该被当成卖点写进 README。
 
+### 20. ⚠️⚠️ 开发机永远测不出「装完就能跑吗」
+
+2026-08-07 发版前做冷启动实测——构建 wheel、全新 venv 装上、跑真实音频。
+撞出两个**必然发生**、而 195 条测试和无数次开发机运行全都没暴露的故障：
+
+**其一：按 README 装完，GPU 上必崩。**
+
+```
+pip install whisperaudit[whisper]     ← README 当时写的
+RuntimeError: Library libcublas.so.12 is not found or cannot be loaded
+```
+
+CTranslate2 不打包 CUDA 运行时。开发机上一直能跑，纯粹因为那里另外装了
+torch，顺带把 `nvidia-cublas-cu12` 等库带了进来。**文档写的那条路径，
+从来没有人真正走过一遍。**
+
+**其二：修好其一之后，崩在更前面。**
+
+```
+TypeError: expected str, bytes or os.PathLike object, not NoneType
+    p = os.path.dirname(nvidia.__file__)
+```
+
+`nvidia` 是 PEP 420 **隐式命名空间包**（没有 `__init__.py`），`__file__` 是
+`None`，只有 `__path__` 可用。开发机上不崩，是因为 torch 的存在让它碰巧成了
+常规包。而「装 CUDA 库但不装 torch」正是刚写进文档的推荐路径——
+**修复第一个坑的动作，直接把用户送进第二个坑。**
+
+两条的共同根因是同一件事：**开发机是被历史污染过的环境**。它装过 torch、
+装过各种引擎、模型早就缓存好、库路径早就配好。在这样的机器上，
+「装完能不能跑」这个问题根本无法被提问，因为「装」从来没有从零发生过。
+
+教训：
+
+1. **发版前必须在全新环境装 wheel 跑一次真实任务。** 不是 `pip install -e .`，
+   不是跑单测——单测在纯 CPU 依赖下全绿，恰好覆盖不到这两条。
+2. **可选依赖的边界按「谁必须装」划，不按「谁在用」划。** CUDA 库单独成
+   extra 是对的（700MB，CPU 用户不该付），但必须出现在文档的主路径里。
+3. **命名空间包不要读 `__file__`，读 `__path__`。** 这条拆成
+   `nvidia_lib_dirs()` 纯函数 + 6 条测试锁住，其中 4 条在旧实现下确实失败。
+
 ---
