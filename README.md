@@ -19,6 +19,21 @@
 自发语音用 SpeechIO ZH00004/ZH00005（商用 API 的公开对标集，同集商用约 1.5~3%）。
 **`qwen` 是唯一两个域都不掉队的**；`funasr` 在自发语音上以微弱优势领先。
 
+**审计与补转值多少？** 同一条 73.8 分钟音频做消融（SpeechIO ZH00004）：
+
+| 配置 | 干净普通话 | 困难音频（慢速歌唱） |
+|---|---|---|
+| 裸引擎单路 | 4.15% | 88.6% |
+| 默认档（单路+审计+补转） | 4.15% | — |
+| `--profile meeting`（双路合并） | **9.69%** | **74.2%** |
+
+**结论有两面，都写在这里**：在干净普通话上，审计+补转收益**恰好为零**，
+双路合并还会把 CER 翻 2.3 倍（`combine()` 逐桶择多在桶边界丢内容，
+详见 [lessons 第 22 条](docs/lessons.md)）。在困难音频上，双路把 CER 从
+88.6% 拉到 74.2%——那才是「不遗漏」这套机制的用武之地。
+
+所以默认档已改为单路（2026-08-07），`meeting` 保留为**已知在丢内容时的补救手段**。
+
 | 其他 | 实测 |
 |---|---|
 | 长音频吞吐 | 默认档 24.5x / `--profile fast` 62x 实时（RTX 4060 Laptop 8GB） |
@@ -61,11 +76,11 @@ whisper-audit run 录音.mp3 --engine funasr
 # 内容体裁不定（既有讲话也有念稿）—— 两个域都不掉队
 whisper-audit run 录音.mp3 --engine qwen
 
-# 口音重 / 内容复杂 / 拿不准 —— 默认档：whisper 双路交叉 + 审计补转，最全
+# 拿不准 —— 默认档：单路 + 覆盖率审计 + 定点补转
 whisper-audit run 录音.mp3
 
-# 单人讲授、音质好 —— 单路，快一半
-whisper-audit run 录音.mp3 --profile lecture
+# 已经发现单路在丢内容（强噪声 / 拖腔 / 极端口音）—— 双路交叉补救
+whisper-audit run 录音.mp3 --profile meeting
 
 # 赶时间 —— turbo 引擎 62x 实时，质量代价实测仅 0.9pp
 whisper-audit run 录音.mp3 --profile fast
@@ -149,7 +164,7 @@ key 只从环境变量 `WHISPER_AUDIT_LLM_KEY` 读。
 
 ## 深入阅读
 
-- **[docs/lessons.md](docs/lessons.md)** —— 21 条实测踩坑记录：VAD 误杀、静音幻觉、
+- **[docs/lessons.md](docs/lessons.md)** —— 22 条实测踩坑记录：VAD 误杀、静音幻觉、
   段内饥饿、合并陷阱、性能真相……每一条都是测出来的，不是文档推理。
   **这份记录是本项目真正的价值所在。**
 - **[docs/measurements.md](docs/measurements.md)** —— 全部实测数字与每个默认值的
@@ -163,7 +178,7 @@ key 只从环境变量 `WHISPER_AUDIT_LLM_KEY` 读。
 
 ```bash
 pip install -e ".[dev]"       # 纯 CPU 核心依赖，不装 ASR 后端
-python3 -m pytest tests/ -q   # 212 tests + 1 xfail，秒级，无需 GPU/音频
+python3 -m pytest tests/ -q   # 213 tests + 1 xfail，秒级，无需 GPU/音频
 ```
 
 ```

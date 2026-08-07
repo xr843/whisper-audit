@@ -30,6 +30,24 @@ The deletion column matters more than it looks. Deletions are content the engine
 silently dropped, and whisper drops **6–10× more** of it on spontaneous Chinese
 speech. That gap is the reason this project exists.
 
+**What do the audit and repatch actually buy you?** Ablation on one 73.8-minute
+file (SpeechIO ZH00004):
+
+| Configuration | Clean Mandarin | Hard audio (sustained singing) |
+|---|---|---|
+| Raw single pass | 4.15% | 88.6% |
+| Default (single pass + audit + repatch) | 4.15% | — |
+| `--profile meeting` (dual-pass merge) | **9.69%** | **74.2%** |
+
+**Both halves of that result are stated here.** On clean Mandarin the audit and
+repatch buy **exactly nothing**, and the dual-pass merge makes CER 2.3× worse —
+`combine()` picks the higher-character pass per 30s bucket and loses content at
+bucket boundaries ([lesson 22](docs/lessons.md)). On hard audio the dual-pass
+takes CER from 88.6% to 74.2%. That is where this machinery earns its keep.
+
+The default is therefore single-pass as of 2026-08-07; `meeting` remains as a
+**recovery option for audio you have confirmed is losing content**.
+
 | Also measured | |
 |---|---|
 | Long-audio throughput | 24.5× realtime default, 62× with `--profile fast` (RTX 4060 Laptop 8GB) |
@@ -103,11 +121,11 @@ whisper-audit run recording.mp3 --engine funasr
 # Mixed material (some speaking, some reading aloud) — holds up in both
 whisper-audit run recording.mp3 --engine qwen
 
-# Heavy accent / hard material / not sure — default: whisper dual-pass + repatch
+# Not sure — default: single pass + coverage audit + targeted repatch
 whisper-audit run recording.mp3
 
-# Single speaker, clean audio — one pass, about twice as fast
-whisper-audit run recording.mp3 --profile lecture
+# You've confirmed a single pass is dropping content (noise, sustained vocals) — dual-pass
+whisper-audit run recording.mp3 --profile meeting
 
 # In a hurry — turbo model, 62× realtime, measured quality cost only 0.9pp
 whisper-audit run recording.mp3 --profile fast
@@ -209,7 +227,7 @@ add or remove content — but a homophone swap can still change meaning
 
 ## Further reading
 
-- **[docs/lessons.md](docs/lessons.md)** — 21 field-tested traps: VAD killing real
+- **[docs/lessons.md](docs/lessons.md)** — 22 field-tested traps: VAD killing real
   speech, silence hallucinations, intra-segment starvation, merge pitfalls,
   performance measurements that turned out to be contaminated. Each one came
   from a measurement, not from reading documentation. **This file is the most
@@ -228,7 +246,7 @@ PRs welcome. Setup, testing discipline, and where help is most needed:
 
 ```bash
 pip install -e ".[dev]"        # pure-CPU core deps, no ASR backend
-python3 -m pytest tests/ -q    # 212 tests + 1 xfail, seconds, no GPU or audio needed
+python3 -m pytest tests/ -q    # 213 tests + 1 xfail, seconds, no GPU or audio needed
 ```
 
 The test suite deliberately runs without a GPU or any audio file: engine

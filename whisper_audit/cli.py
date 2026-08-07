@@ -27,10 +27,11 @@ ENGINE_LABEL = {"funasr": "FunASR SeacoParaformer", "qwen": "Qwen3-ASR-0.6B"}
 # beam search 在困难音频上更容易搜到「整段无语音」的路径整段放弃，
 # 直接违背「不遗漏」的立项目标；还慢 12%。口音域没有直接数据，是剩余不确定性。
 PROFILES = {
-    # 单人讲授、音质好：单路 + 补转即可，最快
+    # 默认档（2026-08-07 起，原为 meeting）：单路 + 审计 + 定点补转。
     "lecture": {"two_pass": False, "chunk_coarse": 30, "batch": 16, "beam": 1,
                 "compute": "int8_float16"},
-    # 多人问答、口音重、内容重要：双路交叉，最全
+    # 双路交叉。**不是「更全」，是「换一种失败方式」**——见下方消融数据。
+    # 只在你已经知道单路在丢内容时才用（困难音频、强噪声、拖腔）。
     "meeting": {"two_pass": True, "chunk_coarse": 30, "chunk_fine": 10, "batch": 16, "beam": 1,
                 "compute": "int8_float16"},
     # 只求快。2026-08-06 起用 large-v3-turbo（解码 32 层→4 层）：
@@ -40,6 +41,27 @@ PROFILES = {
              "compute": "int8_float16",
              "model": "mobiuslabsgmbh/faster-whisper-large-v3-turbo"},
 }
+
+# 默认档 2026-08-07 从 meeting 改为 lecture。依据是目标域消融实测
+# （SpeechIO ZH00004，73.8 分钟拼接版 + 65.5 分钟无间隔连续版，同一份参考）：
+#
+#   配置                          有间隔      连续
+#   裸引擎单路                     4.15%        —
+#   lecture（单路+审计+补转）      4.15%      4.29%
+#   meeting（双路合并）            9.69%      9.87%   ← 原默认
+#
+# 双路合并的两个输入分别是 4.15% 和 4.77%，合出来 9.69%——**比两个输入都差**，
+# 字数也比两路都少。删除形态从零散单字变成 40~70 字的整句消失。
+# 根因是 combine() 逐 30 秒桶取字数多的一路整窗胜出，桶边界处两路切分不同时
+# 会整块丢内容。这与语料无关：合并不该输给它的任一输入。
+#
+# 但**困难域结论相反**（慢速歌唱窗）：双路 74.2% vs 单路 88.6%，双路大幅取胜。
+# 那里两路各自漏掉大量不同内容，逐桶择多确实能捞回来。
+# 所以 meeting 保留，但它是「已知在丢内容时的补救手段」，不是通用的更优解。
+#
+# 另一半发现：审计+补转在目标域**收益恰好为零**——裸引擎与 lecture 档的
+# CER/sub/dele/ins 四个数完全相同。它的价值也在困难域（歌唱域 95.8%→76.1%）。
+
 
 # 计划里还有一个 accurate 档，**故意没有加**。
 #
@@ -58,7 +80,12 @@ PROFILES = {
 def add_run_args(ap):
     ap.add_argument("audio")
     ap.add_argument("-o", "--outdir", default=None, help="输出目录，默认与音频同名")
-    ap.add_argument("--profile", default="meeting", choices=list(PROFILES))
+    ap.add_argument("--profile", default="lecture", choices=list(PROFILES),
+                    help="lecture=单路+审计+补转（默认）；"
+                         "meeting=双路交叉，**只在已知单路在丢内容时用**——"
+                         "干净普通话上实测 CER 翻 2.3 倍（4.29%% → 9.87%%），"
+                         "困难音频上反而大胜（88.6%% → 74.2%%）；"
+                         "fast=turbo 模型，62x 实时。详见 docs/measurements.md")
     ap.add_argument("--terms", default=None, help="术语修正表 json")
     ap.add_argument("--title", default=None)
     ap.add_argument("--keep-break", action="store_true", help="不剔除中场休息段")
@@ -315,6 +342,12 @@ def cmd_run(args):
     model_name = args.model or cfg.get("model", "large-v3")
     mk = dict(model_name=model_name, device=args.device, language=args.language)
     log(f"档位 {args.profile}　引擎 {args.engine}　模型 {ENGINE_LABEL.get(args.engine, model_name)}／{args.device}／{compute}　输出 {outdir}")
+    if args.profile == "meeting":
+        # 名字容易误导：「开会就选 meeting」在干净普通话上会让 CER 翻一倍多。
+        # 它是补救手段，不是更高档次，所以选中时说清楚而不是默默照做。
+        log("  ⚠ meeting 档是双路合并，只在**已知单路在丢内容**时才有收益。"
+            "干净普通话上实测 CER 翻 2.3 倍（4.29%→9.87%）；"
+            "拿不准就用默认的 lecture 档。见 docs/measurements.md")
 
     wav = prepare_audio(src, work)
     loud = Loudness(wav)

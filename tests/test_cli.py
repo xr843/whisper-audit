@@ -164,10 +164,31 @@ def test_default_profiles_keep_beam_1():
 
 
 def test_meeting_is_two_pass_and_lecture_is_not():
-    """双路交叉是 meeting 档「最全」的全部含义——改掉它默认档就名不副实了。"""
+    """双路交叉是 meeting 档的全部含义，改掉它这个档就没有存在理由了。"""
     assert cli.PROFILES["meeting"]["two_pass"] is True
     assert cli.PROFILES["lecture"]["two_pass"] is False
     assert cli.PROFILES["fast"]["two_pass"] is False
+
+
+def test_default_profile_is_single_pass():
+    """默认档 2026-08-07 从 meeting 改为 lecture，依据是目标域消融实测。
+
+    SpeechIO ZH00004，同一份参考，两种音频结构都复现：
+
+        配置                        有间隔 73.8min   连续 65.5min
+        裸引擎单路                     4.15%             —
+        lecture（单路+审计+补转）      4.15%           4.29%
+        meeting（双路合并）            9.69%           9.87%
+
+    双路合并的两个输入是 4.15% 和 4.77%，合出来 9.69%——**比两个输入都差**。
+    合并永远不该输给它的任一输入，所以这是 combine() 的缺陷，不是语料问题。
+
+    这条锁的是「默认档必须是单路」，不是锁死具体档名——将来档位重组时，
+    只要默认仍是单路即可。
+    """
+    a = parse(["录音.mp3"])
+    assert cli.PROFILES[a.profile]["two_pass"] is False, \
+        f"默认档 {a.profile} 是双路——干净普通话上实测 CER 会翻 2.3 倍"
 
 
 def test_batch_requires_int8_float16():
