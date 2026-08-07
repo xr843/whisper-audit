@@ -390,4 +390,39 @@ TypeError: expected str, bytes or os.PathLike object, not NoneType
 3. **命名空间包不要读 `__file__`，读 `__path__`。** 这条拆成
    `nvidia_lib_dirs()` 纯函数 + 6 条测试锁住，其中 4 条在旧实现下确实失败。
 
+### 21. ⚠️⚠️ 重启自己的进程时，`python -m` 会退化成脚本运行
+
+`ensure_cuda_libs()` 要在设好 `LD_LIBRARY_PATH` 后 `os.execv` 重启自己。
+原实现是 `os.execv(sys.executable, [sys.executable] + sys.argv)`。
+
+问题在 `sys.argv[0]`：`python -m whisperaudit.cli` 启动时它是
+**cli.py 的文件路径**，不是 `-m whisperaudit.cli`。于是重启后变成
+「以脚本方式运行 cli.py」——而 cli.py 当时没有 `if __name__ == "__main__"`，
+它定义完所有函数就正常结束。
+
+实测（清空 LD_LIBRARY_PATH 后）：
+
+```
+python3 -m whisperaudit.cli run 录音.wav   → 退出码 0，零输出，无任何产物
+python3 transcribe.py 录音.wav             → 正常报错
+```
+
+**退出码 0、零输出、什么都没做**——在一个以「防静默失败」立项的项目里，
+这是最讽刺也最危险的一类 bug：它看起来像成功。
+
+它是**怎么被发现的**同样值得记：不是靠读代码，也不是靠冷启动实测
+（装包用户走 console script，`__spec__` 为 None，压根不受影响），
+而是做流水线消融实验时脚本里用 `subprocess` 调 `python -m whisperaudit.cli`，
+发现输出目录压根没建。没有那个实验，按 README 用 `python -m` 的人
+会一直拿到空结果而无从察觉。
+
+修法：判 `__main__.__spec__`——`-m` 启动时它不是 None 且 `.name` 就是模块名，
+按 `-m` 形式重启；脚本与 console script 都是 None，走原路径。
+另给 cli.py 补 `__main__` 守卫作兜底闸门。
+拆成 `restart_argv()` 纯函数 + 4 条测试（撤掉修复后确实失败）。
+
+通用教训：**任何 `os.exec*` 重启自己的代码，都要先问「原来是怎么被启动的」。**
+`sys.argv` 不保留启动形式——`-m`、脚本、console script、`-c` 四者各不相同，
+而 `sys.argv[0]` 只在后两者里恰好还能用。
+
 ---

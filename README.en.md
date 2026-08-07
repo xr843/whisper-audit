@@ -209,7 +209,7 @@ add or remove content — but a homophone swap can still change meaning
 
 ## Further reading
 
-- **[docs/lessons.md](docs/lessons.md)** — 20 field-tested traps: VAD killing real
+- **[docs/lessons.md](docs/lessons.md)** — 21 field-tested traps: VAD killing real
   speech, silence hallucinations, intra-segment starvation, merge pitfalls,
   performance measurements that turned out to be contaminated. Each one came
   from a measurement, not from reading documentation. **This file is the most
@@ -228,7 +228,7 @@ PRs welcome. Setup, testing discipline, and where help is most needed:
 
 ```bash
 pip install -e ".[dev]"        # pure-CPU core deps, no ASR backend
-python3 -m pytest tests/ -q    # 208 tests + 1 xfail, seconds, no GPU or audio needed
+python3 -m pytest tests/ -q    # 212 tests + 1 xfail, seconds, no GPU or audio needed
 ```
 
 The test suite deliberately runs without a GPU or any audio file: engine

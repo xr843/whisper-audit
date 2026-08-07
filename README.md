@@ -149,7 +149,7 @@ key 只从环境变量 `WHISPERAUDIT_LLM_KEY` 读。
 
 ## 深入阅读
 
-- **[docs/lessons.md](docs/lessons.md)** —— 20 条实测踩坑记录：VAD 误杀、静音幻觉、
+- **[docs/lessons.md](docs/lessons.md)** —— 21 条实测踩坑记录：VAD 误杀、静音幻觉、
   段内饥饿、合并陷阱、性能真相……每一条都是测出来的，不是文档推理。
   **这份记录是本项目真正的价值所在。**
 - **[docs/measurements.md](docs/measurements.md)** —— 全部实测数字与每个默认值的
@@ -163,7 +163,7 @@ key 只从环境变量 `WHISPERAUDIT_LLM_KEY` 读。
 
 ```bash
 pip install -e ".[dev]"       # 纯 CPU 核心依赖，不装 ASR 后端
-python3 -m pytest tests/ -q   # 208 tests + 1 xfail，秒级，无需 GPU/音频
+python3 -m pytest tests/ -q   # 212 tests + 1 xfail，秒级，无需 GPU/音频
 ```
 
 ```
