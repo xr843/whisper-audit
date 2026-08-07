@@ -1,4 +1,4 @@
-from audio_transcribe import polish as P
+from whisperaudit import polish as P
 
 
 def test_homophone_edit_is_accepted():

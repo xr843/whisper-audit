@@ -138,7 +138,7 @@ def main(argv=None):
     if argv and argv[0] not in SUBCOMMANDS and argv[0] not in ("-h", "--help"):
         argv.insert(0, "run")
 
-    ap = argparse.ArgumentParser(prog="audio-transcribe",
+    ap = argparse.ArgumentParser(prog="whisperaudit",
                                  description="长音频转录流水线（以不遗漏为目标）")
     sub = ap.add_subparsers(dest="cmd", required=True)
     for name in SUBCOMMANDS:
@@ -162,7 +162,7 @@ def cmd_goldset(args):
     log(f"待校对稿 {args.out}：{len(rows)} 行 / {nchar:,} 字"
         f"（{hms(rows[0][0])}–{hms(rows[-1][0])}）")
     log("  现在打开它，**只改错字**——不要动时间戳、不要动格式、不要合并行。")
-    log(f"  改完跑：audio-transcribe eval --gold {args.out} --hyp {args.outdir}")
+    log(f"  改完跑：whisperaudit eval --gold {args.out} --hyp {args.outdir}")
     return 0
 
 
@@ -171,7 +171,7 @@ def _eval_manifest(args):
 
     每条都要过一遍 ASR，所以这条路慢得多，且需要装好 ASR 后端。
     """
-    from bench.manifest import eval_manifest, read_manifest
+    from .bench.manifest import eval_manifest, read_manifest
     ensure_cuda_libs()
     items = read_manifest(args.manifest)
     if args.limit:
@@ -255,9 +255,9 @@ def run_polish(rows, terms, args):
     from .polish import polish
     from .terms import pinyin_fix
 
-    key = _os.environ.get("AUDIO_TRANSCRIBE_LLM_KEY", "")
+    key = _os.environ.get("WHISPERAUDIT_LLM_KEY", "")
     if not key and not args.polish_dry_run:
-        raise SystemExit("需要环境变量 AUDIO_TRANSCRIBE_LLM_KEY（不要写进命令行，会落进 shell 历史）")
+        raise SystemExit("需要环境变量 WHISPERAUDIT_LLM_KEY（不要写进命令行，会落进 shell 历史）")
 
     joined = "\n".join(r["text"] for r in rows)
     log(f"LLM 同音校订：{len(rows)} 行 / {len(joined):,} 字 → {args.llm_base_url}"
@@ -295,8 +295,8 @@ def run_polish(rows, terms, args):
 def cmd_run(args):
     # 提前校验：真实录音要跑几十分钟，不能等转录全做完才告诉用户缺环境变量。
     if args.polish and not args.polish_dry_run \
-            and not os.environ.get("AUDIO_TRANSCRIBE_LLM_KEY"):
-        log("--polish 需要环境变量 AUDIO_TRANSCRIBE_LLM_KEY"
+            and not os.environ.get("WHISPERAUDIT_LLM_KEY"):
+        log("--polish 需要环境变量 WHISPERAUDIT_LLM_KEY"
             "（不要写进命令行，会落进 shell 历史）")
         return 2
 

@@ -22,7 +22,7 @@ Task 3 审查结论：规格 ✅，质量「需修改」——1 Critical + 3 Imp
           已确认未进入任何提交，工作区与 HEAD 均干净
 Task 1 Step 7: 完成（GPU 空闲后补跑）——薄入口端到端通过，输出数字与拆包前逐项一致
   22 段/610 字、覆盖 67.8%、有效语音 56.4%、34 条字幕、6 段/640 字
-Task 2 真机验证: audio-transcribe run 路径与 python3 transcribe.py 产出一致
+Task 2 真机验证: whisperaudit run 路径与 python3 transcribe.py 产出一致
 拼音纠错实测: 见 docs/measurements.md（证实价值 + 发现跨词边界危险，已锁死测试）
 Task 4:  complete (commit 9b6c4e1, goldset/eval 全链路实跑验证, 63 tests)
 Task 4b: complete (commit a5e25c2, manifest + AISHELL 获取脚本)

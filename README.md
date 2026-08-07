@@ -1,4 +1,4 @@
-# audio-transcribe
+# WhisperAudit
 
 **[English](README.en.md) · [中文](README.md)**
 
@@ -29,7 +29,7 @@
 ## 安装
 
 ```bash
-git clone https://github.com/xr843/audio-transcribe && cd audio-transcribe
+git clone https://github.com/xr843/whisperaudit && cd whisperaudit
 pip install -e ".[whisper]"          # 按需选：.[whisper] / .[funasr] / .[qwen]，可组合
 sudo apt install ffmpeg              # 系统依赖，pip 装不了；macOS: brew install ffmpeg
 ```
@@ -41,22 +41,22 @@ sudo apt install ffmpeg              # 系统依赖，pip 装不了；macOS: bre
 
 ```bash
 # 标准普通话（演讲/讲课/会议）—— 质量最高且快：CER 2% 级、漏字少 6~10 倍
-audio-transcribe run 录音.mp3 --engine funasr
+whisperaudit run 录音.mp3 --engine funasr
 
 # 内容体裁不定（既有讲话也有念稿）—— 两个域都不掉队
-audio-transcribe run 录音.mp3 --engine qwen
+whisperaudit run 录音.mp3 --engine qwen
 
 # 口音重 / 内容复杂 / 拿不准 —— 默认档：whisper 双路交叉 + 审计补转，最全
-audio-transcribe run 录音.mp3
+whisperaudit run 录音.mp3
 
 # 单人讲授、音质好 —— 单路，快一半
-audio-transcribe run 录音.mp3 --profile lecture
+whisperaudit run 录音.mp3 --profile lecture
 
 # 赶时间 —— turbo 引擎 62x 实时，质量代价实测仅 0.9pp
-audio-transcribe run 录音.mp3 --profile fast
+whisperaudit run 录音.mp3 --profile fast
 
 # 多人对话 —— 标注说话人（只加标签，不改一个字；三个引擎都能配）
-audio-transcribe run 访谈.mp3 --engine funasr --diarize
+whisperaudit run 访谈.mp3 --engine funasr --diarize
 ```
 
 `python3 transcribe.py 录音.mp3` 与装包后的命令等价。
@@ -89,10 +89,10 @@ whisper 慢且在自发语音上明显更差，仍留作默认是因为它在困
 
 ```bash
 # 1. 从输出切一段生成待校对稿（初稿就是 ASR 结果）
-audio-transcribe goldset 输出目录/ --from 00:10:00 --to 00:20:00 -o sample.gold.tsv
+whisperaudit goldset 输出目录/ --from 00:10:00 --to 00:20:00 -o sample.gold.tsv
 # 2. 打开 sample.gold.tsv，只改第三列的错字——不动时间戳、不合并行
 # 3. 评测
-audio-transcribe eval --gold sample.gold.tsv --hyp 输出目录/
+whisperaudit eval --gold sample.gold.tsv --hyp 输出目录/
 ```
 
 报告含 CER、**删除率**（漏了多少——本工具的立身指标）与**同音/近音错占比**
@@ -120,7 +120,7 @@ audio-transcribe eval --gold sample.gold.tsv --hyp 输出目录/
 
 开启后必须逐条核对 `质检报告.json` 里的改动清单（每条带时间戳可回听）。
 `--polish` 配套 `--llm-base-url` / `--llm-model` / `--polish-dry-run`，
-key 只从环境变量 `AUDIO_TRANSCRIBE_LLM_KEY` 读。
+key 只从环境变量 `WHISPERAUDIT_LLM_KEY` 读。
 
 ## 已知局限
 
@@ -148,7 +148,7 @@ python3 -m pytest tests/ -q   # 195 tests + 1 xfail，秒级，无需 GPU/音频
 ```
 
 ```
-audio_transcribe/
+whisperaudit/
   cli.py         命令行与主流程          engines/   ASR 后端（whisper/funasr/qwen）
   audio.py       转码 + 音量测量          audit.py   空洞 / 幻觉 / 段内饥饿 / 终审
   merge.py       多路合并与去重           render.py  标点 / 分段 / 出稿 / 字幕重切

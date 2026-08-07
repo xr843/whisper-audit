@@ -12,7 +12,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from audio_transcribe import audit, merge, render
+from whisperaudit import audit, merge, render
 
 
 def seg(start, end, text, logprob=-0.3, words=None):

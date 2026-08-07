@@ -64,7 +64,7 @@
 改一处要通读全文，也无法单独测试。
 
 ```
-audio_transcribe/
+whisperaudit/
   __init__.py
   cli.py           命令行与主流程
   audio.py         转码 + Loudness
@@ -141,8 +141,8 @@ class Engine:
 ### A3. 命令
 
 ```bash
-audio-transcribe goldset 输出目录/ --from 00:10:00 --to 00:25:00 -o sample.gold.tsv
-audio-transcribe eval --gold sample.gold.tsv --hyp 输出目录/
+whisperaudit goldset 输出目录/ --from 00:10:00 --to 00:25:00 -o sample.gold.tsv
+whisperaudit eval --gold sample.gold.tsv --hyp 输出目录/
 ```
 
 输出表格到终端，同时写 `eval_report.json` 供门禁比对。
@@ -210,7 +210,7 @@ key 走环境变量）。分块发送全文。
 ## C. 开源化
 
 - `LICENSE` —— MIT
-- `pyproject.toml` —— 可 `pip install -e .`，提供 `audio-transcribe` 命令行入口
+- `pyproject.toml` —— 可 `pip install -e .`，提供 `whisperaudit` 命令行入口
 - GitHub Actions —— pytest（无 GPU）+ CI 夹具的 CER 门禁
 - README —— 保持中文为主（价值即那 16 条实测教训），加英文摘要段
 - 术语表 —— 删掉部分条目，移到 `examples/terms/`
@@ -235,7 +235,7 @@ key 走环境变量）。分块发送全文。
 - [ ] FunASR 作为第二路跑通；跨引擎合并有测试证明不丢内容
 - [ ] `--polish` 的拼音拒绝率被记账；单测证明不同音改动 100% 被拒
 - [ ] 默认档速度退化 ≤ 5%
-- [ ] `pip install -e .` 后 `audio-transcribe` 可用
+- [ ] `pip install -e .` 后 `whisperaudit` 可用
 - [ ] GitHub Actions 绿
 - [ ] 全部现有 24 个测试仍然通过
 

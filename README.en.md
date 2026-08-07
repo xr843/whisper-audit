@@ -1,4 +1,4 @@
-# audio-transcribe
+# WhisperAudit
 
 **[English](README.en.md) · [中文](README.md)**
 
@@ -66,7 +66,7 @@ This one assumes it isn't, and checks:
 ## Install
 
 ```bash
-git clone https://github.com/xr843/audio-transcribe && cd audio-transcribe
+git clone https://github.com/xr843/whisperaudit && cd whisperaudit
 pip install -e ".[whisper]"      # pick any: .[whisper] / .[funasr] / .[qwen], combinable
 sudo apt install ffmpeg          # system dependency; macOS: brew install ffmpeg
 ```
@@ -81,22 +81,22 @@ non-autoregressive, so its CPU inference is far faster than whisper's.
 
 ```bash
 # Clear Mandarin (talks, lectures, meetings) — best quality and fast
-audio-transcribe run recording.mp3 --engine funasr
+whisperaudit run recording.mp3 --engine funasr
 
 # Mixed material (some speaking, some reading aloud) — holds up in both
-audio-transcribe run recording.mp3 --engine qwen
+whisperaudit run recording.mp3 --engine qwen
 
 # Heavy accent / hard material / not sure — default: whisper dual-pass + repatch
-audio-transcribe run recording.mp3
+whisperaudit run recording.mp3
 
 # Single speaker, clean audio — one pass, about twice as fast
-audio-transcribe run recording.mp3 --profile lecture
+whisperaudit run recording.mp3 --profile lecture
 
 # In a hurry — turbo model, 62× realtime, measured quality cost only 0.9pp
-audio-transcribe run recording.mp3 --profile fast
+whisperaudit run recording.mp3 --profile fast
 
 # Multi-speaker — label speakers (labels only; never edits a character of text)
-audio-transcribe run interview.mp3 --engine funasr --diarize
+whisperaudit run interview.mp3 --engine funasr --diarize
 ```
 
 `python3 transcribe.py recording.mp3` is equivalent to the installed command.
@@ -133,10 +133,10 @@ remaining suspicious spans.
 
 ```bash
 # 1. Cut a window of the output into a correction sheet (seeded with the ASR text)
-audio-transcribe goldset output_dir/ --from 00:10:00 --to 00:20:00 -o sample.gold.tsv
+whisperaudit goldset output_dir/ --from 00:10:00 --to 00:20:00 -o sample.gold.tsv
 # 2. Open it and fix ONLY wrong characters in column 3 — don't touch timestamps, don't merge rows
 # 3. Score it
-audio-transcribe eval --gold sample.gold.tsv --hyp output_dir/
+whisperaudit eval --gold sample.gold.tsv --hyp output_dir/
 ```
 
 You get CER, the **deletion rate** (how much went missing — this project's
@@ -144,7 +144,7 @@ headline metric), and the **homophone error share**, which tells you the ceiling
 of any pinyin- or LLM-based correction before you bother enabling one.
 
 You can also score public benchmarks directly:
-`audio-transcribe eval --manifest fleurs.jsonl --engine qwen`.
+`whisperaudit eval --manifest fleurs.jsonl --engine qwen`.
 
 ## Glossary (optional)
 
@@ -168,7 +168,7 @@ You can also score public benchmarks directly:
 | `--polish` | LLM homophone repair | **Sends your transcript to the endpoint you configure**; and homophone substitution can itself change meaning |
 
 Both log every edit with a timestamp into the QA report, and you are expected to
-review them. `--polish` reads its key only from `AUDIO_TRANSCRIBE_LLM_KEY`
+review them. `--polish` reads its key only from `WHISPERAUDIT_LLM_KEY`
 (never a command-line flag — that lands in shell history) and supports
 `--polish-dry-run`. Its guardrail enforces that every replacement is a true
 homophone of the original *and* that the line count is unchanged, so it cannot
@@ -217,7 +217,7 @@ protect is the class of bug that never raises an exception — silently dropping
 content, silently rewriting text, silently overstating coverage.
 
 ```
-audio_transcribe/
+whisperaudit/
   cli.py         CLI and main flow        engines/   ASR backends (whisper / funasr / qwen)
   audio.py       transcode + loudness     audit.py   gaps / hallucinations / starvation
   merge.py       multi-pass merge         render.py  punctuation / paragraphs / subtitles

@@ -7,7 +7,7 @@ import argparse
 
 import pytest
 
-from audio_transcribe import cli
+from whisperaudit import cli
 
 
 def parse(case):
@@ -15,7 +15,7 @@ def parse(case):
     argv = list(case)
     if argv and argv[0] not in cli.SUBCOMMANDS and argv[0] not in ("-h", "--help"):
         argv.insert(0, "run")
-    ap = argparse.ArgumentParser(prog="audio-transcribe")
+    ap = argparse.ArgumentParser(prog="whisperaudit")
     sub = ap.add_subparsers(dest="cmd", required=True)
     cli.add_run_args(sub.add_parser("run"))
     return ap.parse_args(argv)
@@ -65,7 +65,7 @@ def test_every_declared_subcommand_has_a_builder():
 
 
 def test_all_subcommands_parse_their_own_args():
-    ap = argparse.ArgumentParser(prog="audio-transcribe")
+    ap = argparse.ArgumentParser(prog="whisperaudit")
     sub = ap.add_subparsers(dest="cmd", required=True)
     for name in cli.SUBCOMMANDS:
         cli._BUILDERS[name](sub.add_parser(name))
@@ -89,7 +89,7 @@ def test_eval_requires_gold_and_hyp_or_manifest():
 
 
 def test_eval_accepts_manifest_form():
-    ap = argparse.ArgumentParser(prog="audio-transcribe")
+    ap = argparse.ArgumentParser(prog="whisperaudit")
     sub = ap.add_subparsers(dest="cmd", required=True)
     for name in cli.SUBCOMMANDS:
         cli._BUILDERS[name](sub.add_parser(name))
@@ -100,7 +100,7 @@ def test_eval_accepts_manifest_form():
 
 def test_polish_without_key_fails_before_transcribing(monkeypatch, tmp_path):
     """真实录音要跑几十分钟，缺环境变量必须在开跑前就报，不能等转完才说。"""
-    monkeypatch.delenv("AUDIO_TRANSCRIBE_LLM_KEY", raising=False)
+    monkeypatch.delenv("WHISPERAUDIT_LLM_KEY", raising=False)
     audio = tmp_path / "x.wav"
     audio.write_bytes(b"not really audio")
     assert cli.main(["run", str(audio), "--polish"]) == 2
@@ -109,8 +109,8 @@ def test_polish_without_key_fails_before_transcribing(monkeypatch, tmp_path):
 
 def test_polish_dry_run_does_not_need_a_key(monkeypatch):
     """dry-run 不发请求，不该要 key。"""
-    monkeypatch.delenv("AUDIO_TRANSCRIBE_LLM_KEY", raising=False)
-    ap = argparse.ArgumentParser(prog="audio-transcribe")
+    monkeypatch.delenv("WHISPERAUDIT_LLM_KEY", raising=False)
+    ap = argparse.ArgumentParser(prog="whisperaudit")
     sub = ap.add_subparsers(dest="cmd", required=True)
     for name in cli.SUBCOMMANDS:
         cli._BUILDERS[name](sub.add_parser(name))
@@ -128,7 +128,7 @@ def test_fast_profile_selects_turbo_model():
 
 def test_explicit_model_overrides_profile(monkeypatch):
     """显式 --model 必须压过档位里的 model 字段。"""
-    ap = argparse.ArgumentParser(prog="audio-transcribe")
+    ap = argparse.ArgumentParser(prog="whisperaudit")
     sub = ap.add_subparsers(dest="cmd", required=True)
     for name in cli.SUBCOMMANDS:
         cli._BUILDERS[name](sub.add_parser(name))
@@ -149,7 +149,7 @@ def test_default_profiles_keep_large_v3():
 def test_run_engine_flag_exists_with_whisper_default():
     """funasr 在标准普通话域碾压（SpeechIO 2.06%/2.44% vs whisper 4.2~8.7%），
     但慢速歌唱域会崩、重口音未测——所以是显式选项，whisper 仍是默认。"""
-    ap = argparse.ArgumentParser(prog="audio-transcribe")
+    ap = argparse.ArgumentParser(prog="whisperaudit")
     sub = ap.add_subparsers(dest="cmd", required=True)
     for name in cli.SUBCOMMANDS:
         cli._BUILDERS[name](sub.add_parser(name))

@@ -4,7 +4,7 @@
 """
 import re
 
-from audio_transcribe.render import render, speaker_labels
+from whisperaudit.render import render, speaker_labels
 
 
 def _rows(spec):

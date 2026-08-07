@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 给 audio-transcribe 建立字级 CER 评测与回归门禁，接入三条正确率提升路径（拼音术语纠错、中文专用第二引擎、LLM 同音校订），并完成开源化。
+**Goal:** 给 whisperaudit 建立字级 CER 评测与回归门禁，接入三条正确率提升路径（拼音术语纠错、中文专用第二引擎、LLM 同音校订），并完成开源化。
 
-**Architecture:** 先把 849 行的 `transcribe.py` 拆成 `audio_transcribe/` 包，ASR 后端抽象为 Engine 接口。评测模块独立于流水线，纯文本输入输出，因此不需要 GPU 也不需要音频即可在 CI 跑。三条提升路径各自是可开关的独立阶段，每条都必须拿出独立的 CER 增量数字才允许默认开启。
+**Architecture:** 先把 849 行的 `transcribe.py` 拆成 `whisperaudit/` 包，ASR 后端抽象为 Engine 接口。评测模块独立于流水线，纯文本输入输出，因此不需要 GPU 也不需要音频即可在 CI 跑。三条提升路径各自是可开关的独立阶段，每条都必须拿出独立的 CER 增量数字才允许默认开启。
 
 **Tech Stack:** Python 3.12 / faster-whisper / FunASR / rapidfuzz / pypinyin / opencc / pytest / GitHub Actions
 
@@ -48,25 +48,25 @@
 ## Task 1: 拆包骨架
 
 **Files:**
-- Create: `audio_transcribe/__init__.py`, `audio_transcribe/audio.py`, `audio_transcribe/audit.py`, `audio_transcribe/merge.py`, `audio_transcribe/render.py`, `audio_transcribe/cli.py`, `audio_transcribe/engines/__init__.py`, `audio_transcribe/engines/whisper.py`
+- Create: `whisperaudit/__init__.py`, `whisperaudit/audio.py`, `whisperaudit/audit.py`, `whisperaudit/merge.py`, `whisperaudit/render.py`, `whisperaudit/cli.py`, `whisperaudit/engines/__init__.py`, `whisperaudit/engines/whisper.py`
 - Modify: `transcribe.py`（改为薄入口）, `tests/test_pipeline.py`（改 import）
 
 **Interfaces:**
 - Consumes: 无
 - Produces:
-  - `audio_transcribe.audio`: `ensure_cuda_libs()`, `prepare_audio(src, workdir) -> str`, `class Loudness(wav)` 带 `.db(t0,t1)` `.close()`
-  - `audio_transcribe.audit`: `SPEECH_RATE=3.0`, `HALLU_PAT`, `starved_spans(segments, min_len=15.0, min_density=1.2, max_span=90.0) -> list[[float,float,str]]`, `audit(data, loud, gap_min=3.0) -> dict`, `audit_rows(rows, dur, min_len=15.0, min_density=1.2) -> dict`, `find_breaks(data, loud, min_len=120, step=10, max_n=3) -> list[tuple]`, `in_any(t, spans, pad=0.0) -> bool`
-  - `audio_transcribe.merge`: `strip_common(a,b,min_block=8) -> str`, `merge_rows(rows) -> list[dict]`, `combine(passes, patch, terms, breaks, dur, drop_spans=()) -> list[dict]`
-  - `audio_transcribe.render`: `DEFAULT_LEAD`, `CLAUSE_GLUE`, `insert_clause_breaks(t, lead=None, min_run=16, max_run=38) -> str`, `gap_thresholds(rows, lo=0.25, hi=0.60) -> tuple[float,float]`, `punctuate_row(row, comma_gap=0.35, period_gap=0.9) -> str`, `resplit_rows(rows, max_dur=8.0, max_chars=30) -> list[dict]`, `raw_text(passes) -> str`, `terms_hits(text, terms) -> dict`, `render(rows, dur, outdir, title, terms, meta) -> tuple[int,int,int]`
-  - `audio_transcribe.engines`: `class Engine` 抽象基类（`name: str`、`transcribe(wav, **opts) -> dict`）、`get_engine(name, **kw) -> Engine`
-  - `audio_transcribe.engines.whisper`: `class WhisperEngine(Engine)`，`name = "whisper"`
-  - `audio_transcribe.cli`: `main(argv=None) -> int`
+  - `whisperaudit.audio`: `ensure_cuda_libs()`, `prepare_audio(src, workdir) -> str`, `class Loudness(wav)` 带 `.db(t0,t1)` `.close()`
+  - `whisperaudit.audit`: `SPEECH_RATE=3.0`, `HALLU_PAT`, `starved_spans(segments, min_len=15.0, min_density=1.2, max_span=90.0) -> list[[float,float,str]]`, `audit(data, loud, gap_min=3.0) -> dict`, `audit_rows(rows, dur, min_len=15.0, min_density=1.2) -> dict`, `find_breaks(data, loud, min_len=120, step=10, max_n=3) -> list[tuple]`, `in_any(t, spans, pad=0.0) -> bool`
+  - `whisperaudit.merge`: `strip_common(a,b,min_block=8) -> str`, `merge_rows(rows) -> list[dict]`, `combine(passes, patch, terms, breaks, dur, drop_spans=()) -> list[dict]`
+  - `whisperaudit.render`: `DEFAULT_LEAD`, `CLAUSE_GLUE`, `insert_clause_breaks(t, lead=None, min_run=16, max_run=38) -> str`, `gap_thresholds(rows, lo=0.25, hi=0.60) -> tuple[float,float]`, `punctuate_row(row, comma_gap=0.35, period_gap=0.9) -> str`, `resplit_rows(rows, max_dur=8.0, max_chars=30) -> list[dict]`, `raw_text(passes) -> str`, `terms_hits(text, terms) -> dict`, `render(rows, dur, outdir, title, terms, meta) -> tuple[int,int,int]`
+  - `whisperaudit.engines`: `class Engine` 抽象基类（`name: str`、`transcribe(wav, **opts) -> dict`）、`get_engine(name, **kw) -> Engine`
+  - `whisperaudit.engines.whisper`: `class WhisperEngine(Engine)`，`name = "whisper"`
+  - `whisperaudit.cli`: `main(argv=None) -> int`
 
 - [ ] **Step 1: 建包目录与空模块**
 
 ```bash
-mkdir -p audio_transcribe/engines
-touch audio_transcribe/__init__.py audio_transcribe/engines/__init__.py
+mkdir -p whisperaudit/engines
+touch whisperaudit/__init__.py whisperaudit/engines/__init__.py
 ```
 
 - [ ] **Step 2: 按职责搬运现有代码，不改任何逻辑**
@@ -80,14 +80,14 @@ touch audio_transcribe/__init__.py audio_transcribe/engines/__init__.py
 | `HALLU_*` / `SPEECH_RATE` / `starved_spans` / `audit_rows` / `audit` / `find_breaks` / `in_any` | `audit.py` |
 | `strip_common` / `merge_rows` / `combine` | `merge.py` |
 | `DEFAULT_LEAD` / `CLAUSE_GLUE` / `insert_clause_breaks` / `gap_thresholds` / `punctuate_row` / `resplit_rows` / `_split_row` / `raw_text` / `terms_hits` / `render` | `render.py` |
-| `log` / `hms` | `audio_transcribe/__init__.py` |
+| `log` / `hms` | `whisperaudit/__init__.py` |
 | `main()` | `cli.py` |
 
 搬运时唯一允许的改动是补 import。**逻辑一行都不许改。**
 
 - [ ] **Step 3: 定义 Engine 抽象**
 
-`audio_transcribe/engines/__init__.py`:
+`whisperaudit/engines/__init__.py`:
 
 ```python
 """ASR 后端抽象。
@@ -124,7 +124,7 @@ def get_engine(name, **kw):
     return _REGISTRY[name](**kw)
 ```
 
-`audio_transcribe/engines/whisper.py` 里把现有 `transcribe_pass` 包成类：
+`whisperaudit/engines/whisper.py` 里把现有 `transcribe_pass` 包成类：
 
 ```python
 from . import Engine, register
@@ -147,13 +147,13 @@ class WhisperEngine(Engine):
 
 ```python
 #!/usr/bin/env python3
-"""长音频转录流水线 —— 兼容入口。实现在 audio_transcribe/ 包里。
+"""长音频转录流水线 —— 兼容入口。实现在 whisperaudit/ 包里。
 
     python3 transcribe.py 录音.mp3 -o 输出目录 --profile meeting
 """
 import sys
 
-from audio_transcribe.cli import main
+from whisperaudit.cli import main
 
 if __name__ == "__main__":
     sys.exit(main())
@@ -164,7 +164,7 @@ if __name__ == "__main__":
 `tests/test_pipeline.py` 去掉 `import transcribe as T`，改成：
 
 ```python
-from audio_transcribe import audit, merge, render
+from whisperaudit import audit, merge, render
 ```
 
 再把测试体里的 `T.xxx` 逐个替换为它真正所属的模块：
@@ -192,7 +192,7 @@ Expected: 正常输出 4 个文件，日志里有「终审：合并稿覆盖 …
 
 ```bash
 git add -A
-git commit -m "拆包：transcribe.py 拆为 audio_transcribe/，ASR 后端抽象为 Engine 接口"
+git commit -m "拆包：transcribe.py 拆为 whisperaudit/，ASR 后端抽象为 Engine 接口"
 ```
 
 ---
@@ -201,11 +201,11 @@ git commit -m "拆包：transcribe.py 拆为 audio_transcribe/，ASR 后端抽�
 
 **Files:**
 - Create: `pyproject.toml`
-- Modify: `audio_transcribe/cli.py`, `requirements.txt`
+- Modify: `whisperaudit/cli.py`, `requirements.txt`
 
 **Interfaces:**
-- Consumes: `audio_transcribe.cli.main`
-- Produces: 命令 `audio-transcribe`，子命令 `run`（默认）/ `eval` / `goldset`
+- Consumes: `whisperaudit.cli.main`
+- Produces: 命令 `whisperaudit`，子命令 `run`（默认）/ `eval` / `goldset`
 
 - [ ] **Step 1: 写 pyproject.toml**
 
@@ -215,7 +215,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "audio-transcribe"
+name = "whisperaudit"
 version = "0.2.0"
 description = "长音频转文档流水线，以不遗漏为目标，带覆盖率审计与字级 CER 评测"
 readme = "README.md"
@@ -234,10 +234,10 @@ funasr = ["funasr>=1.1.0"]
 dev = ["pytest>=8.0"]
 
 [project.scripts]
-audio-transcribe = "audio_transcribe.cli:main"
+whisperaudit = "whisperaudit.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["audio_transcribe*"]
+include = ["whisperaudit*"]
 ```
 
 核心依赖必须纯 CPU 可装，ASR 后端走 extras——否则 CI 装不动。
@@ -251,7 +251,7 @@ def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] not in ("run", "eval", "goldset", "-h", "--help"):
         argv.insert(0, "run")
-    ap = argparse.ArgumentParser(prog="audio-transcribe")
+    ap = argparse.ArgumentParser(prog="whisperaudit")
     sub = ap.add_subparsers(dest="cmd", required=True)
     _add_run_args(sub.add_parser("run", help="转录"))
     ...
@@ -262,7 +262,7 @@ def main(argv=None):
 Run:
 ```bash
 pip install --user --break-system-packages -e .
-audio-transcribe --help
+whisperaudit --help
 python3 transcribe.py --help
 ```
 Expected: 两条都打印用法，无 traceback
@@ -276,7 +276,7 @@ Expected: `24 passed`
 
 ```bash
 git add -A
-git commit -m "打包：pyproject.toml 与 audio-transcribe 命令行入口"
+git commit -m "打包：pyproject.toml 与 whisperaudit 命令行入口"
 ```
 
 ---
@@ -284,7 +284,7 @@ git commit -m "打包：pyproject.toml 与 audio-transcribe 命令行入口"
 ## Task 3: CER 评测核心（可并行）
 
 **Files:**
-- Create: `audio_transcribe/evaluate.py`, `tests/test_evaluate.py`
+- Create: `whisperaudit/evaluate.py`, `tests/test_evaluate.py`
 
 **Interfaces:**
 - Consumes: 无
@@ -303,7 +303,7 @@ git commit -m "打包：pyproject.toml 与 audio-transcribe 命令行入口"
 ```python
 import pytest
 
-from audio_transcribe import evaluate as E
+from whisperaudit import evaluate as E
 
 
 def test_normalize_strips_punctuation_and_converts_traditional():
@@ -360,7 +360,7 @@ def test_perfect_match_scores_zero():
 - [ ] **Step 2: 跑测试确认失败**
 
 Run: `python3 -m pytest tests/test_evaluate.py -q`
-Expected: FAIL，`ModuleNotFoundError: No module named 'audio_transcribe.evaluate'`
+Expected: FAIL，`ModuleNotFoundError: No module named 'whisperaudit.evaluate'`
 
 - [ ] **Step 3: 实现 evaluate.py**
 
@@ -450,7 +450,7 @@ Expected: `8 passed`
 - [ ] **Step 5: Commit**
 
 ```bash
-git add audio_transcribe/evaluate.py tests/test_evaluate.py
+git add whisperaudit/evaluate.py tests/test_evaluate.py
 git commit -m "评测：字级 CER 与增删改分解，单列删除率与同音/近音替换率"
 ```
 
@@ -459,17 +459,17 @@ git commit -m "评测：字级 CER 与增删改分解，单列删除率与同音
 ## Task 4: 金标生成与评测命令
 
 **Files:**
-- Create: `audio_transcribe/goldset.py`, `tests/test_goldset.py`
-- Modify: `audio_transcribe/cli.py`
+- Create: `whisperaudit/goldset.py`, `tests/test_goldset.py`
+- Modify: `whisperaudit/cli.py`
 
 **Interfaces:**
-- Consumes: `audio_transcribe.evaluate.score`
+- Consumes: `whisperaudit.evaluate.score`
 - Produces:
   - `make_goldset(srt_path, start=None, end=None) -> list[tuple[float, str]]`
   - `write_tsv(rows, path)` / `read_tsv(path) -> list[tuple[float, str]]`
   - `evaluate_dir(gold_path, hyp_srt_path) -> dict`
-  - CLI：`audio-transcribe goldset <输出目录> --from 00:10:00 --to 00:25:00 -o sample.gold.tsv`
-  - CLI：`audio-transcribe eval --gold sample.gold.tsv --hyp <输出目录>`
+  - CLI：`whisperaudit goldset <输出目录> --from 00:10:00 --to 00:25:00 -o sample.gold.tsv`
+  - CLI：`whisperaudit eval --gold sample.gold.tsv --hyp <输出目录>`
 
 **金标格式**：两列 TSV，`秒数<TAB>文本`。人工只改错字，不碰格式、不打时间戳。
 
@@ -478,7 +478,7 @@ git commit -m "评测：字级 CER 与增删改分解，单列删除率与同音
 ```python
 import io
 
-from audio_transcribe import goldset as G
+from whisperaudit import goldset as G
 
 SRT = """1
 00:00:01,000 --> 00:00:03,000
@@ -526,7 +526,7 @@ def test_tsv_tolerates_hand_edited_whitespace(tmp_path):
 - [ ] **Step 2: 跑测试确认失败**
 
 Run: `python3 -m pytest tests/test_goldset.py -q`
-Expected: FAIL，`No module named 'audio_transcribe.goldset'`
+Expected: FAIL，`No module named 'whisperaudit.goldset'`
 
 - [ ] **Step 3: 实现 goldset.py**
 
@@ -616,9 +616,9 @@ Expected: `4 passed`
 
 Run:
 ```bash
-audio-transcribe goldset /tmp/t1 --from 00:00:00 --to 00:05:00 -o /tmp/t1.gold.tsv
+whisperaudit goldset /tmp/t1 --from 00:00:00 --to 00:05:00 -o /tmp/t1.gold.tsv
 head -3 /tmp/t1.gold.tsv
-audio-transcribe eval --gold /tmp/t1.gold.tsv --hyp /tmp/t1
+whisperaudit eval --gold /tmp/t1.gold.tsv --hyp /tmp/t1
 ```
 Expected: TSV 两列可读；eval 打印 CER 表格（未改错字时 CER 应为 0.000）
 
@@ -635,10 +635,10 @@ git commit -m "金标：goldset 生成待校对稿，eval 子命令跑 CER"
 
 **Files:**
 - Create: `bench/manifest.py`, `bench/fetch_aishell_test.sh`, `tests/test_manifest.py`
-- Modify: `audio_transcribe/cli.py`（`eval` 增加 `--manifest`）
+- Modify: `whisperaudit/cli.py`（`eval` 增加 `--manifest`）
 
 **Interfaces:**
-- Consumes: `audio_transcribe.evaluate.score`
+- Consumes: `whisperaudit.evaluate.score`
 - Produces: `read_manifest(path) -> list[dict]`、`eval_manifest(items, transcribe_fn) -> dict`
 
 manifest 是每行 `{"audio": "...", "text": "..."}` 的 jsonl。评测与数据来源解耦，
@@ -688,7 +688,7 @@ Expected: FAIL，`No module named 'bench'`
 """公开测试集接入。评测与数据来源解耦：只要能给出 {audio, text}，就能评。"""
 import json
 
-from audio_transcribe.evaluate import score
+from whisperaudit.evaluate import score
 
 
 def read_manifest(path):
@@ -764,7 +764,7 @@ git commit -m "评测：manifest 驱动的公开集接入与 AISHELL-1 获取脚
 - Create: `tests/fixtures/regression.jsonl`, `tests/test_regression.py`
 
 **Interfaces:**
-- Consumes: `audio_transcribe.evaluate.score`
+- Consumes: `whisperaudit.evaluate.score`
 - Produces: 固定的 `(ref, hyp)` 文本对与期望指标，作为 CI 门禁
 
 CI 跑不了 ASR（无 GPU、无音频），所以门禁只能盯**纯文本阶段**：评测工具本身的输出稳定性，
@@ -787,7 +787,7 @@ CI 跑不了 ASR（无 GPU、无音频），所以门禁只能盯**纯文本阶�
 import json
 import pathlib
 
-from audio_transcribe import evaluate as E
+from whisperaudit import evaluate as E
 
 FIX = pathlib.Path(__file__).parent / "fixtures" / "regression.jsonl"
 
@@ -825,11 +825,11 @@ git commit -m "CI 夹具：固定文本对的 CER 回归门禁"
 ## Task 6: 拼音级术语纠错（可并行）
 
 **Files:**
-- Create: `audio_transcribe/terms.py`, `tests/test_terms.py`
+- Create: `whisperaudit/terms.py`, `tests/test_terms.py`
 - Modify: `examples/terms/finance-lecture.json`（Task 13 建，此处先用测试内联数据）
 
 **Interfaces:**
-- Consumes: `audio_transcribe.evaluate.pinyin_key`
+- Consumes: `whisperaudit.evaluate.pinyin_key`
 - Produces: `pinyin_fix(text, terms, loose=True) -> tuple[str, list[dict]]`
   - 返回 `(修正后文本, 命中列表)`，命中项为 `{"pos": int, "from": str, "to": str}`
   - 术语表新增 `terms` 字段：只列**正确写法**的字符串列表
@@ -842,7 +842,7 @@ git commit -m "CI 夹具：固定文本对的 CER 回归门禁"
 ```python
 import pytest
 
-from audio_transcribe import terms as T
+from whisperaudit import terms as T
 
 TERMS = {"terms": ["财税管理", "大型活动场所", "非营利组织", "记账凭证"]}
 
@@ -892,7 +892,7 @@ def test_empty_terms_is_noop():
 - [ ] **Step 2: 跑测试确认失败**
 
 Run: `python3 -m pytest tests/test_terms.py -q`
-Expected: FAIL，`No module named 'audio_transcribe.terms'`
+Expected: FAIL，`No module named 'whisperaudit.terms'`
 
 - [ ] **Step 3: 实现 terms.py**
 
@@ -945,7 +945,7 @@ Expected: `7 passed`
 - [ ] **Step 5: Commit**
 
 ```bash
-git add audio_transcribe/terms.py tests/test_terms.py
+git add whisperaudit/terms.py tests/test_terms.py
 git commit -m "术语表：拼音级模糊纠错，只在同音/近音时替换并全量记账"
 ```
 
@@ -954,7 +954,7 @@ git commit -m "术语表：拼音级模糊纠错，只在同音/近音时替换�
 ## Task 7: 接入拼音纠错并测出 CER 增量
 
 **Files:**
-- Modify: `audio_transcribe/merge.py`（`combine` 的 `norm`）, `audio_transcribe/cli.py`
+- Modify: `whisperaudit/merge.py`（`combine` 的 `norm`）, `whisperaudit/cli.py`
 - Create: `tests/test_pinyin_integration.py`
 
 **Interfaces:**
@@ -964,7 +964,7 @@ git commit -m "术语表：拼音级模糊纠错，只在同音/近音时替换�
 - [ ] **Step 1: 写失败测试**
 
 ```python
-from audio_transcribe import merge as M
+from whisperaudit import merge as M
 
 
 def test_combine_applies_pinyin_fix_and_records_hits():
@@ -1044,8 +1044,8 @@ Expected: 全绿（24 + 新增）
 
 Run:
 ```bash
-audio-transcribe eval --gold <金标>.gold.tsv --hyp <开启纠错的输出目录>
-audio-transcribe eval --gold <金标>.gold.tsv --hyp <关闭纠错的输出目录>
+whisperaudit eval --gold <金标>.gold.tsv --hyp <开启纠错的输出目录>
+whisperaudit eval --gold <金标>.gold.tsv --hyp <关闭纠错的输出目录>
 ```
 把两个 CER 与 `homo_pct` 记进 `docs/measurements.md`。
 **判定（实施后修订）：默认关闭。** 不只看 CER——存在系统性误伤（节余/结余这类真实词被判同音）就必须默认关，哪怕 CER 略有改善。
@@ -1062,10 +1062,10 @@ git commit -m "接入拼音纠错：改动全量记账进质检报告，--pinyin
 ## Task 8: FunASR 第二引擎（可并行）
 
 **Files:**
-- Create: `audio_transcribe/engines/funasr.py`, `tests/test_funasr_adapter.py`
+- Create: `whisperaudit/engines/funasr.py`, `tests/test_funasr_adapter.py`
 
 **Interfaces:**
-- Consumes: `audio_transcribe.engines.Engine` / `register`
+- Consumes: `whisperaudit.engines.Engine` / `register`
 - Produces: `class FunASREngine(Engine)`，`name = "funasr"`；`to_segments(raw) -> list[dict]`
 
 - [ ] **Step 1: 先探明 FunASR 的实际输出格式，不要凭记忆写适配**
@@ -1090,7 +1090,7 @@ Expected: 打印实际结构。**把结构记在 `funasr.py` 的文档字符串�
 或时间单位是秒而非毫秒），**以实测为准改测试，而不是改适配器去迁就这段推测**：
 
 ```python
-from audio_transcribe.engines import funasr as F
+from whisperaudit.engines import funasr as F
 
 
 def test_to_segments_maps_sentence_info():
@@ -1126,7 +1126,7 @@ Expected: `2 passed`
 
 - [ ] **Step 6: 真机验证引擎可跑**
 
-Run: `python3 -c "from audio_transcribe.engines import get_engine; print(get_engine('funasr').transcribe('<5分钟音频>.wav')['segments'][:2])"`
+Run: `python3 -c "from whisperaudit.engines import get_engine; print(get_engine('funasr').transcribe('<5分钟音频>.wav')['segments'][:2])"`
 Expected: 打印两条 segment。若模型下载失败，在文档里记录并标注此引擎不可用。
 
 - [ ] **Step 7: Commit**
@@ -1141,7 +1141,7 @@ git commit -m "引擎：接入 FunASR，适配器为纯函数可离线测试"
 ## Task 9: 档位支持引擎组合，跨引擎合并验证
 
 **Files:**
-- Modify: `audio_transcribe/cli.py`（`PROFILES`）, `audio_transcribe/merge.py`
+- Modify: `whisperaudit/cli.py`（`PROFILES`）, `whisperaudit/merge.py`
 - Create: `tests/test_cross_engine_merge.py`
 
 **Interfaces:**
@@ -1151,7 +1151,7 @@ git commit -m "引擎：接入 FunASR，适配器为纯函数可离线测试"
 - [ ] **Step 1: 写失败测试**
 
 ```python
-from audio_transcribe import merge as M
+from whisperaudit import merge as M
 
 
 def test_cross_engine_merge_keeps_content_unique_to_each():
@@ -1237,10 +1237,10 @@ git commit -m "档位：支持引擎组合，跨引擎合并行为由测试锁�
 ## Task 10: LLM 同音校订核心（可并行）
 
 **Files:**
-- Create: `audio_transcribe/polish.py`, `tests/test_polish.py`
+- Create: `whisperaudit/polish.py`, `tests/test_polish.py`
 
 **Interfaces:**
-- Consumes: `audio_transcribe.evaluate.pinyin_key`
+- Consumes: `whisperaudit.evaluate.pinyin_key`
 - Produces:
   - `constrain(before, after, loose=False) -> tuple[str, dict]` —— 纯函数，无网络
   - `polish(text, *, base_url, model, api_key, chunk=1200, dry_run=False) -> tuple[str, dict]`
@@ -1252,7 +1252,7 @@ git commit -m "档位：支持引擎组合，跨引擎合并行为由测试锁�
 - [ ] **Step 1: 写失败测试**
 
 ```python
-from audio_transcribe import polish as P
+from whisperaudit import polish as P
 
 
 def test_homophone_edit_is_accepted():
@@ -1300,7 +1300,7 @@ def test_identical_text_is_noop():
 - [ ] **Step 2: 跑测试确认失败**
 
 Run: `python3 -m pytest tests/test_polish.py -q`
-Expected: FAIL，`No module named 'audio_transcribe.polish'`
+Expected: FAIL，`No module named 'whisperaudit.polish'`
 
 - [ ] **Step 3: 实现 constrain**
 
@@ -1402,7 +1402,7 @@ def polish(text, *, base_url, model, api_key, chunk=1200, dry_run=False,
 - [ ] **Step 6: Commit**
 
 ```bash
-git add audio_transcribe/polish.py tests/test_polish.py
+git add whisperaudit/polish.py tests/test_polish.py
 git commit -m "LLM 校订：拼音硬约束，只放行同音替换，长度变化整块拒绝"
 ```
 
@@ -1411,11 +1411,11 @@ git commit -m "LLM 校订：拼音硬约束，只放行同音替换，长度变�
 ## Task 11: 接入 polish 与 accurate 档
 
 **Files:**
-- Modify: `audio_transcribe/cli.py`
+- Modify: `whisperaudit/cli.py`
 
 **Interfaces:**
 - Produces: CLI 新增 `--polish` / `--llm-base-url` / `--llm-model` / `--polish-dry-run`；
-  环境变量 `AUDIO_TRANSCRIBE_LLM_KEY` 读 key；`PROFILES` 新增 `accurate`
+  环境变量 `WHISPERAUDIT_LLM_KEY` 读 key；`PROFILES` 新增 `accurate`
 
 - [ ] **Step 1: 加 accurate 档与参数**
 
@@ -1434,9 +1434,9 @@ git commit -m "LLM 校订：拼音硬约束，只放行同音替换，长度变�
 prep = None
 if args.polish or cfg.get("polish"):
     from .polish import polish as run_polish
-    key = os.environ.get("AUDIO_TRANSCRIBE_LLM_KEY", "")
+    key = os.environ.get("WHISPERAUDIT_LLM_KEY", "")
     if not key and not args.polish_dry_run:
-        raise SystemExit("需要环境变量 AUDIO_TRANSCRIBE_LLM_KEY")
+        raise SystemExit("需要环境变量 WHISPERAUDIT_LLM_KEY")
     joined = "\n".join(r["text"] for r in rows)
     fixed, prep = run_polish(joined, base_url=args.llm_base_url,
                              model=args.llm_model, api_key=key,
@@ -1472,7 +1472,7 @@ if prep:
 
 - [ ] **Step 4: dry-run 人工验证**
 
-Run: `audio-transcribe run <音频> -o /tmp/t2 --profile accurate --polish-dry-run`
+Run: `whisperaudit run <音频> -o /tmp/t2 --profile accurate --polish-dry-run`
 Expected: 打印将发送的块数与首块内容，不发任何网络请求
 
 - [ ] **Step 5: 测出 polish 的 CER 增量**
@@ -1495,7 +1495,7 @@ git commit -m "接入 LLM 校订与 accurate 档，key 只走环境变量"
 - Create: `bench/throughput.py`, `docs/measurements.md`
 
 **Interfaces:**
-- Produces: `audio-transcribe` 无关的独立脚本，打印 `实时倍数`
+- Produces: `whisperaudit` 无关的独立脚本，打印 `实时倍数`
 
 - [ ] **Step 1: 写 throughput.py**
 
@@ -1514,7 +1514,7 @@ import sys
 import time
 
 sys.path.insert(0, ".")
-from audio_transcribe.audio import ensure_cuda_libs
+from whisperaudit.audio import ensure_cuda_libs
 
 BASELINE = 24.5         # bench15.wav（15 分钟）、int8_float16、batch16、beam5、词级时间戳开
 TOLERANCE = 0.05        # 退化不得超过 5% → 下限 23.3x
@@ -1647,7 +1647,7 @@ Expected: 全绿。若有测试因缺 `faster_whisper` 失败，说明该测试�
 > The "踩过的坑" section below is the real value here — 16 findings, every one
 > measured on real recordings rather than reasoned from documentation.
 >
-> `pip install -e ".[whisper]"` then `audio-transcribe run recording.mp3`.
+> `pip install -e ".[whisper]"` then `whisperaudit run recording.mp3`.
 > Docs are in Chinese; the code and CLI are not.
 ```
 
@@ -1666,12 +1666,12 @@ Expected: 全绿。若有测试因缺 `faster_whisper` 失败，说明该测试�
 
 ```bash
 # 1. 从跑完的输出里切一段生成待校对稿（初稿就是 ASR 结果）
-audio-transcribe goldset 输出目录/ --from 00:10:00 --to 00:25:00 -o sample.gold.tsv
+whisperaudit goldset 输出目录/ --from 00:10:00 --to 00:25:00 -o sample.gold.tsv
 
 # 2. 打开 sample.gold.tsv，只改错字。不碰格式、不打时间戳。
 
 # 3. 评测
-audio-transcribe eval --gold sample.gold.tsv --hyp 输出目录/
+whisperaudit eval --gold sample.gold.tsv --hyp 输出目录/
 ```
 
 报告里 **删除率** 是「不遗漏」的直接度量；**同音/近音替换率** 告诉你拼音纠错与
@@ -1701,6 +1701,6 @@ git commit -m "开源化：MIT 许可、GitHub Actions、术语表脱敏移入 e
 - [ ] FunASR 作为第二路跑通；跨引擎合并有测试证明不丢内容
 - [ ] `--polish` 的拼音拒绝率被记账；单测证明不同音改动 100% 被拒
 - [ ] 默认档速度退化 ≤ 5%（≥ 23.3x 实时）
-- [ ] `pip install -e .` 后 `audio-transcribe` 可用
+- [ ] `pip install -e .` 后 `whisperaudit` 可用
 - [ ] GitHub Actions 绿
 - [ ] 全部现有 24 个测试仍然通过

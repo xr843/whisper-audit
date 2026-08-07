@@ -23,7 +23,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from audio_transcribe.audio import ensure_cuda_libs
+from whisperaudit.audio import ensure_cuda_libs
 
 BASELINE = 24.5        # bench15.wav（15 分钟照稿朗读片段）、int8_float16、batch16、beam5、词级时间戳开
 TOLERANCE = 0.05        # 退化不得超过 5% → 下限 23.3x

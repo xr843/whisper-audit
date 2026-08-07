@@ -12,8 +12,8 @@ import pathlib
 import numpy as np
 import pytest
 
-from audio_transcribe import diarize as D
-from audio_transcribe.diarize import (
+from whisperaudit import diarize as D
+from whisperaudit.diarize import (
     _label_names,
     _slice_audio,
     assign_speakers,

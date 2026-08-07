@@ -5,8 +5,8 @@
 """
 import pytest
 
-from audio_transcribe.engines import Engine, get_engine, register
-from audio_transcribe.engines.whisper import WhisperEngine
+from whisperaudit.engines import Engine, get_engine, register
+from whisperaudit.engines.whisper import WhisperEngine
 
 
 def test_whisper_engine_is_registered():
@@ -32,7 +32,7 @@ def test_out_json_none_does_not_crash_the_cache_check():
     曾经这条路一走就崩——因为从来没人走过。"""
     import inspect
 
-    from audio_transcribe.engines import whisper as W
+    from whisperaudit.engines import whisper as W
     src = inspect.getsource(W.transcribe_pass)
     assert "out_json and os.path.exists" in src
     src2 = inspect.getsource(W.repatch)

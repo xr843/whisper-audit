@@ -5,7 +5,7 @@
 """
 import pytest
 
-from audio_transcribe import merge as M
+from whisperaudit import merge as M
 
 TERMS = {"terms": ["财税管理"], "fixes": []}
 
@@ -107,7 +107,7 @@ def test_pinyin_fix_is_off_by_default():
 def test_real_words_survive_pinyin_fix_when_enabled():
     """开启拼音纠错后，真实存在的词不该被改成同音的另一个词——
     这是**期望行为**；当前实现做不到，故标 xfail 让欠债在 CI 输出里可见。"""
-    from audio_transcribe.terms import pinyin_fix
+    from whisperaudit.terms import pinyin_fix
     terms = {"terms": ["结余分配", "内部控制"]}
     for src in ("本年度完成节余分配后转入下年度", "那条内部空值字段没有清理干净"):
         out, hits = pinyin_fix(src, terms)

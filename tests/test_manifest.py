@@ -1,6 +1,6 @@
 import json
 
-from bench import manifest as M
+from whisperaudit.bench import manifest as M
 
 
 def test_read_manifest_skips_blank_lines(tmp_path):

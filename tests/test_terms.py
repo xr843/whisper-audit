@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from audio_transcribe import terms as T
+from whisperaudit import terms as T
 
 TERMS = {"terms": ["财税管理", "大型活动场所", "非营利组织", "记账凭证"]}
 

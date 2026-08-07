@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "audio-transcribe"
-version = "0.2.0"
-description = "长音频中文转录流水线：覆盖率审计 + 定点补转 + 字级 CER 评测，双引擎离线运行"
+name = "whisperaudit"
+version = "0.3.0"
+description = "Chinese long-audio transcription with coverage auditing, targeted re-transcription, speaker diarization and a built-in CER harness"
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -45,16 +45,16 @@ qwen = ["qwen-asr>=0.0.6"]
 dev = ["pytest>=8.0", "soundfile>=0.12"]   # soundfile：float32 WAV 测试夹具
 
 [project.urls]
-Homepage = "https://github.com/xr843/audio-transcribe"
-Repository = "https://github.com/xr843/audio-transcribe"
-"实测数据" = "https://github.com/xr843/audio-transcribe/blob/master/docs/measurements.md"
-"踩坑记录" = "https://github.com/xr843/audio-transcribe/blob/master/docs/lessons.md"
+Homepage = "https://github.com/xr843/whisperaudit"
+Repository = "https://github.com/xr843/whisperaudit"
+"实测数据" = "https://github.com/xr843/whisperaudit/blob/master/docs/measurements.md"
+"踩坑记录" = "https://github.com/xr843/whisperaudit/blob/master/docs/lessons.md"
 
 [project.scripts]
-audio-transcribe = "audio_transcribe.cli:main"
+whisperaudit = "whisperaudit.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["audio_transcribe*", "bench*"]
+include = ["whisperaudit*"]
 
 [tool.pytest.ini_options]
 filterwarnings = [
