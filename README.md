@@ -53,12 +53,16 @@ audio-transcribe run 录音.mp3 --profile lecture
 
 # 赶时间 —— turbo 引擎 62x 实时，质量代价实测仅 0.9pp
 audio-transcribe run 录音.mp3 --profile fast
+
+# 多人对话 —— 标注说话人（只加标签，不改一个字）
+audio-transcribe run 访谈.mp3 --engine funasr --diarize
 ```
 
 `python3 transcribe.py 录音.mp3` 与装包后的命令等价。
 无显卡：`--engine funasr --device cpu`（3.2x 实时）。
 其他参数：`--terms 术语表.json`、`--keep-break`（不剔除中场休息）、
-`--model`、`--device`、`--language`、`--title`、`-o`，详见 `--help`。
+`--speakers N`（已知人数）、`--model`、`--device`、`--language`、`--title`、`-o`，
+详见 `--help`。
 
 **引擎一句话**：清晰普通话 → `funasr`；口音重、类型未知、歌唱类 → 默认 whisper
 （funasr 在慢速歌唱域会崩，方言重口音未实测）。
@@ -69,8 +73,8 @@ audio-transcribe run 录音.mp3 --profile fast
 
 | 文件 | 用途 |
 |---|---|
-| `*_全文转录.md` / `.txt` | 正文，时间戳分段、自动标点 |
-| `*_字幕.srt` | 词级时间戳切分，配原音频逐句回听核对 |
+| `*_全文转录.md` / `.txt` | 正文，时间戳分段、自动标点；`--diarize` 时换人处断段并标 `S1`/`S2` |
+| `*_字幕.srt` | 词级时间戳切分，配原音频逐句回听核对；`--diarize` 时每条带 `[S1]` |
 | `质检报告.json` | 覆盖率、漏转区段、幻觉清单、改动记账——**出稿前看一眼** |
 | `.work/` | 中间结果，重跑自动复用（改参数前先删） |
 
@@ -118,7 +122,8 @@ key 只从环境变量 `AUDIO_TRANSCRIBE_LLM_KEY` 读。
 1. **ASR 准确率有上限**：方言口音 + 术语密集段落错得密，术语表修高频错，
    其余需对照 `.srt` 回听校对
 2. **标点是推定的**（词间停顿 + 连接词），不代表讲者原意
-3. **不做说话人分离**
+3. **说话人分离是可选标注**（`--diarize`，默认关）：标签靠声纹聚类推定，
+   短促插话（「嗯」「对」）容易归错人；只认出一人时不标。它**从不改动正文**
 4. **歌唱类音频不适用**（慢速拖腔实测 CER 74%+，删除主导，补转救不回）
 5. 中场休息自动识别可能误判，`--keep-break` 可关
 
