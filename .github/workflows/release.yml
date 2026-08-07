@@ -1,0 +1,74 @@
+name: release
+
+# 打 tag 即发布。全程无 token —— PyPI 通过 OIDC 直接验证「这个包确实来自
+# xr843/whisper-audit 的这条 workflow」，凭据不存在于磁盘、Secrets 或任何地方。
+#
+# 用法：
+#   1. 改 pyproject.toml 里的 version
+#   2. git tag -a v0.4.0 -m "..." && git push --tags
+#
+# 在本机构建过一次 0.3.0 之后加的这条流水线，动机是那次预检抓到的两个问题
+# （bench/ 曾是顶层包、两条 Project-URL 因改名而破损）——两者都只在
+# 「被历史污染过的开发机」上才会长出来。CI 每次都是干净环境。
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # tag 与 pyproject 的 version 对不上是最容易犯又最难发现的错：
+      # 打了 v0.4.0 却忘了改 version，发出去的仍是 0.3.0——而 PyPI 会
+      # 直接拒绝（文件已存在），报错信息跟版本号毫无关系，很难联想到根因。
+      - name: tag 与 pyproject 版本必须一致
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          VER=$(python -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          echo "tag=$TAG  pyproject=$VER"
+          [ "$TAG" = "$VER" ] || { echo "::error::tag v$TAG 与 pyproject 的 $VER 不一致"; exit 1; }
+
+      - run: pip install -e ".[dev]"
+      - run: python -m pytest tests/ -q
+
+  build:
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install build twine
+      - run: python -m build
+      # twine check 拦的是 PyPI 会拒绝的元数据问题。本地发 0.3.0 时它确实
+      # 挡下过一次（旧版 twine 认不了 Metadata-Version 2.4），值得留着。
+      - run: python -m twine check dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    # environment 让你可以在 GitHub 上给发布加一道人工审批（Settings →
+    # Environments → pypi → Required reviewers）。名字必须与 PyPI 上填的一致。
+    environment: pypi
+    permissions:
+      id-token: write        # OIDC 令牌：Trusted Publishing 的全部依据
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
