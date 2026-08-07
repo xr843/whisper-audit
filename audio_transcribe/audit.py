@@ -12,6 +12,24 @@ HALLU_PAT = re.compile(HALLU_WORDS)
 # 取 3.0 作保守基准：用来估「有效语音时长」和判定段内饥饿。
 SPEECH_RATE = 3.0
 
+# 「死空气」：音量比讲话中位低这么多分贝，那里就不是人在说话。
+#
+# 这一条**不需要置信度**，因此是零置信度引擎唯一可用的客观幻觉信号。
+# funasr 与 qwen 的 avg_logprob 恒为 0.0（它们不产出这个数），low_conf
+# 永远为假——在加这条判据之前，整个音量侧的幻觉检测对这两个引擎是死代码。
+#
+# 2026-08-07 三引擎静音对照（5 秒纯静音 / 30 秒纯静音 / 30 秒极轻底噪）：
+#   whisper  0 / 0 / 0 字            —— 自带 VAD + no_speech_prob，本来就干净
+#   funasr   17 / 6 / 3 字           —— 「没有没有没有…」「thethe」
+#   qwen     2 / 2 / 2 字            —— 「嗯。」
+# funasr 反而是三者里幻觉最多的，而它已经是标准普通话的推荐引擎。
+#
+# 阈值取 25 而不是既有的 8：真实的轻声讲话可能比中位低 8~15 dB，
+# 误删真内容比漏掉一处幻觉严重得多（本项目的立身指标是删除率）。
+# 实测纯静音 −270 dBFS、极轻底噪 −66 dBFS，与真实语音之间空档极大，
+# 不需要把线画紧——25 dB 已经远在任何真实人声之外。
+DEAD_AIR_DB = 25.0
+
 
 def starved_spans(segments, min_len=15.0, min_density=1.2, max_span=90.0):
     """段内饥饿：一个 segment 时长很长、字却很少 —— 它内部吞掉了没转出来的话。
@@ -106,10 +124,12 @@ def audit(data, loud, gap_min=3.0):
         # 说了半天没几个字：正常讲话约 3 字/秒，"嗯嗯嗯"占 28 秒只转出 3 个字。
         starved = (low_conf and span_len > 5
                    and len(s["text"].strip()) / max(span_len, 0.1) < 0.5)
-        if not (by_word or low_conf):
-            continue
         db = loud.db(s["start"], s["end"])
         if db != db:
+            continue
+        # 死空气：音量根本撑不起人声。这条不看置信度，零置信度引擎全靠它。
+        dead_air = bool(s["text"].strip()) and db < speech_db - DEAD_AIR_DB
+        if not (by_word or low_conf or dead_air):
             continue
         if starved:                          # 无论音量如何，这种段落没有内容可言
             hallu.append((s, db))

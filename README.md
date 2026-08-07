@@ -13,26 +13,34 @@
 > Docs are in Chinese; the code and CLI are not.
 
 中文长音频 → 文稿/字幕。目标是**不遗漏**，不是「转一遍」：
-自动审计漏转、定点补转、并给你一把可复现的正确率尺子。
-双引擎，本机 GPU 或**纯 CPU** 离线运行，音频不出本机。
+自动审计漏转、定点补转、可选说话人标注，并给你一把可复现的正确率尺子。
+三引擎可选，本机 GPU 或**纯 CPU** 离线运行，音频不出本机。
 
-## 实测成绩（2026-08-06）
+## 实测成绩（2026-08-07）
 
-| 语料 | 域 | 本流水线 | 参照 |
+三个引擎在两个域的字级 CER（数越小越好）：
+
+| 引擎 | 自发语音<br>演讲 / 讲课 | 标准朗读<br>FLEURS | 漏字数<br>（演讲/讲课） |
 |---|---|---|---|
-| SpeechIO ZH00004（场馆演讲） | 自发语音 | **2.06%**（`--engine funasr`） | 商用 API 同集约 1.5~3% |
-| SpeechIO ZH00005（在线讲课） | 自发语音 | **2.44%**（`--engine funasr`） | 同上 |
-| FLEURS cmn_hans test 全量 | 标准朗读 | 4.45%（whisper 默认档） | 官方报告 whisper 同集约 4.1% |
-| 长音频吞吐 | 生产工况 | 默认档 24.5x / fast 档 62x 实时 | RTX 4060 Laptop 8GB |
-| 纯 CPU 吞吐 | 无显卡场景 | 3.2x 实时（`--engine funasr --device cpu`） | 普通笔记本即可 |
+| `--engine qwen` | 2.11% / 2.61% | **3.92%** | 76 / 132 |
+| `--engine funasr` | **2.06%** / **2.44%** | 5.36% | 79 / 130 |
+| 默认 whisper large-v3 | 4.18% / 8.67% | 4.45% | 243 / 815 |
 
-字级 CER。口径、复现步骤与所有开关的判定依据见 [docs/measurements.md](docs/measurements.md)。
+自发语音用 SpeechIO ZH00004/ZH00005（商用 API 的公开对标集，同集商用约 1.5~3%）。
+**`qwen` 是唯一两个域都不掉队的**；`funasr` 在自发语音上以微弱优势领先。
+
+| 其他 | 实测 |
+|---|---|
+| 长音频吞吐 | 默认档 24.5x / `--profile fast` 62x 实时（RTX 4060 Laptop 8GB） |
+| 纯 CPU 吞吐 | 3.2x 实时（`--engine funasr --device cpu`），普通笔记本即可 |
+
+口径、复现步骤与所有开关的判定依据见 [docs/measurements.md](docs/measurements.md)。
 
 ## 安装
 
 ```bash
 git clone https://github.com/xr843/audio-transcribe && cd audio-transcribe
-pip install -e ".[whisper]"          # whisper 引擎；两个都要装 ".[whisper,funasr]"
+pip install -e ".[whisper]"          # 按需选：.[whisper] / .[funasr] / .[qwen]，可组合
 sudo apt install ffmpeg              # 系统依赖，pip 装不了；macOS: brew install ffmpeg
 ```
 
@@ -42,8 +50,11 @@ sudo apt install ffmpeg              # 系统依赖，pip 装不了；macOS: bre
 ## 用法
 
 ```bash
-# 标准普通话（演讲/讲课/会议）—— 质量最高且快：CER 2% 级、删除少 6~10 倍
+# 标准普通话（演讲/讲课/会议）—— 质量最高且快：CER 2% 级、漏字少 6~10 倍
 audio-transcribe run 录音.mp3 --engine funasr
+
+# 内容体裁不定（既有讲话也有念稿）—— 两个域都不掉队
+audio-transcribe run 录音.mp3 --engine qwen
 
 # 口音重 / 内容复杂 / 拿不准 —— 默认档：whisper 双路交叉 + 审计补转，最全
 audio-transcribe run 录音.mp3
@@ -54,7 +65,7 @@ audio-transcribe run 录音.mp3 --profile lecture
 # 赶时间 —— turbo 引擎 62x 实时，质量代价实测仅 0.9pp
 audio-transcribe run 录音.mp3 --profile fast
 
-# 多人对话 —— 标注说话人（只加标签，不改一个字）
+# 多人对话 —— 标注说话人（只加标签，不改一个字；三个引擎都能配）
 audio-transcribe run 访谈.mp3 --engine funasr --diarize
 ```
 
@@ -64,8 +75,12 @@ audio-transcribe run 访谈.mp3 --engine funasr --diarize
 `--speakers N`（已知人数）、`--model`、`--device`、`--language`、`--title`、`-o`，
 详见 `--help`。
 
-**引擎一句话**：清晰普通话 → `funasr`；口音重、类型未知、歌唱类 → 默认 whisper
-（funasr 在慢速歌唱域会崩，方言重口音未实测）。
+**引擎怎么选**：清晰普通话 → `funasr`；体裁不定 → `qwen`；
+口音重、类型未知、歌唱类 → 保持默认 whisper。
+
+whisper 慢且在自发语音上明显更差，仍留作默认是因为它在困难域的兜底行为
+是测过的：`funasr` 在慢速歌唱域会崩，`qwen` 的困难域一个数都没测。
+**默认值的位置留给最稳的，不留给平均分最高的。**
 
 ### 输出
 

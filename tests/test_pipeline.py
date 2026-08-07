@@ -80,6 +80,59 @@ def test_audit_includes_starved_spans(monkeypatch):
     assert any("饥饿" in lab for lab in labels)
 
 
+# ------------------------------------------------- 死空气：零置信度引擎的幻觉
+
+class _Loud:
+    """按时间段返回预设音量。区间用 [start, end) 匹配。"""
+
+    def __init__(self, plan, default=-28.0):
+        self.plan, self.default = plan, default
+
+    def db(self, t0, t1):
+        for a, b, v in self.plan:
+            if a <= t0 < b:
+                return v
+        return self.default
+
+
+def test_dead_air_segment_is_dropped():
+    """零置信度引擎（funasr/qwen）的 avg_logprob 恒为 0.0。
+
+    加这条判据之前，`if not (by_word or low_conf): continue` 让整个音量侧
+    检测对它们是死代码——静音段吐出的「嗯。」「没有没有没有」全都进成品。
+    2026-08-07 实测 funasr 在 5 秒纯静音上吐 17 个字。
+    """
+    data = {"duration": 100.0,
+            "segments": [seg(0.0, 60.0, "字" * 200, logprob=0.0),
+                         seg(60.0, 65.0, "没有没有没有有有有没有", logprob=0.0)]}
+    rep = audit.audit(data, _Loud([(60.0, 65.0, -270.0)]))
+    assert [60.0, 65.0] in rep["drop"], f"死空气段没被剔除：{rep['drop']}"
+    assert any("没有" in t for _, _, t, _ in rep["hallu"])
+
+
+def test_quiet_real_speech_is_never_dropped():
+    """护栏：轻声讲话不许被当成死空气删掉。
+
+    误删真内容比漏掉一处幻觉严重得多——删除率是本项目的立身指标。
+    比中位低 15 dB（真人压低嗓门的量级）必须活下来；阈值 25 dB 就是
+    为这个留的余量。
+    """
+    data = {"duration": 100.0,
+            "segments": [seg(0.0, 60.0, "字" * 200, logprob=0.0),
+                         seg(60.0, 90.0, "这段是压低嗓门说的但确实是内容", logprob=0.0)]}
+    rep = audit.audit(data, _Loud([(60.0, 90.0, -43.0)]))   # 中位 -28，低 15dB
+    assert rep["drop"] == [], f"轻声真内容被误删：{rep['drop']}"
+
+
+def test_empty_segment_in_silence_is_not_flagged():
+    """静音处本来就没转出字——没有幻觉可言，不该记账。"""
+    data = {"duration": 100.0,
+            "segments": [seg(0.0, 60.0, "字" * 200, logprob=0.0),
+                         seg(60.0, 65.0, "   ", logprob=0.0)]}
+    rep = audit.audit(data, _Loud([(60.0, 65.0, -270.0)]))
+    assert rep["drop"] == []
+
+
 # ---------------------------------------------------------------- 终审
 
 def test_final_audit_reports_effective_speech_not_wall_clock():

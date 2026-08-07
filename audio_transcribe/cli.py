@@ -63,10 +63,12 @@ def add_run_args(ap):
     ap.add_argument("--title", default=None)
     ap.add_argument("--keep-break", action="store_true", help="不剔除中场休息段")
     ap.add_argument("--engine", default="whisper", choices=["whisper", "funasr", "qwen"],
-                    help="主引擎。funasr=SeacoParaformer：SpeechIO 演讲/讲课域实测 "
-                         "CER 2.06%%/2.44%%（whisper 系 4.2~8.7%%）、删除少 6~10 倍、"
-                         "速度更快——**标准普通话内容选它**。whisper 保留为默认：慢速歌唱等"
-                         "困难域 funasr 会崩（见 docs/measurements.md），重口音未实测")
+                    help="主引擎。实测 CER（自发语音 演讲/讲课 · 朗读 FLEURS）："
+                         "funasr=SeacoParaformer 2.06%%/2.44%% · 5.36%%（标准普通话选它）；"
+                         "qwen=Qwen3-ASR 2.11%%/2.61%% · 3.92%%（两个域都不掉队）；"
+                         "whisper 4.18%%/8.67%% · 4.45%%。whisper 慢且自发语音明显更差，"
+                         "仍作默认是因为困难域兜底行为测过——funasr 在慢速歌唱域会崩、"
+                         "qwen 困难域未测。详见 docs/measurements.md")
     ap.add_argument("--model", default=None,
                     help="faster-whisper 模型名。默认 large-v3；fast 档默认 turbo。"
                          "显式传入则覆盖档位设置")
