@@ -8,7 +8,7 @@
   items 是 text 去掉标点后的有序子序列（ForcedAligner 分词器丢弃标点），不能直接
   zip 回 text——5 分钟样本里 text 740 字、items 只有 658 个，差的 82 个全是标点。
 """
-from whisperaudit.engines.qwen import QwenEngine, to_segments
+from whisper_audit.engines.qwen import QwenEngine, to_segments
 
 
 def test_real_shape_reattaches_punctuation_stripped_from_items():
@@ -108,7 +108,7 @@ def test_qwen_engine_is_registered_and_constructible_without_the_dependency():
     """引擎类必须在没装 qwen-asr/torch 的环境里也能 import 与实例化——重依赖只在
     transcribe() 内部延迟加载，CI 没 GPU、没装 qwen-asr 也要能跑到这一步（见 pyproject.toml
     的 CI 注释：ASR 后端不进核心/dev 依赖）。"""
-    from whisperaudit.engines import Engine, get_engine
+    from whisper_audit.engines import Engine, get_engine
     e = get_engine("qwen")
     assert isinstance(e, QwenEngine)
     assert isinstance(e, Engine)

@@ -44,19 +44,19 @@ def nvidia_lib_dirs():
 def restart_argv(main_module=None, argv=None, executable=None):
     """重启自己时该用的 argv。纯函数，可测。
 
-    **`-m` 启动必须保持 `-m` 形式重启。** `python -m whisperaudit.cli` 下
+    **`-m` 启动必须保持 `-m` 形式重启。** `python -m whisper_audit.cli` 下
     `sys.argv[0]` 是 `cli.py` 的文件路径，直接 `[executable] + argv` 会把重启
     变成「以脚本方式运行 cli.py」——而 `cli.py` 里没有 `if __name__ == "__main__"`，
     于是它定义完所有函数就**正常退出，退出码 0、零输出、一件事没做**。
 
     2026-08-07 实测（清空 LD_LIBRARY_PATH 后）：
-        python3 -m whisperaudit.cli run 录音.wav   → 退出码 0，无输出，无产物
+        python3 -m whisper_audit.cli run 录音.wav   → 退出码 0，无输出，无产物
         python3 transcribe.py 录音.wav             → 正常报错
 
     这是本项目最忌讳的那类故障：看起来像成功。
 
     判据用 `__main__.__spec__`——`-m` 启动时它不是 None 且 `.name` 就是模块名；
-    脚本启动（`transcribe.py`）和 console script（装包后的 `whisperaudit`）
+    脚本启动（`transcribe.py`）和 console script（装包后的 `whisper-audit`）
     都是 None，走原路径。
     """
     import sys as _sys

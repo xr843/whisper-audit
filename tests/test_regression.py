@@ -11,8 +11,8 @@ import pathlib
 
 import pytest
 
-from whisperaudit import evaluate as E
-from whisperaudit import terms as T
+from whisper_audit import evaluate as E
+from whisper_audit import terms as T
 
 FIX = pathlib.Path(__file__).parent / "fixtures" / "regression.jsonl"
 

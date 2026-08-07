@@ -2,7 +2,7 @@
 
 实测格式：text 字间带空格，timestamp 逐字 [start_ms, end_ms] 与字一一对应。
 """
-from whisperaudit.engines.funasr import to_segments
+from whisper_audit.engines.funasr import to_segments
 
 
 def test_real_shape_char_level_timestamps_become_words():
@@ -65,7 +65,7 @@ def test_duration_survives_float32_wav(tmp_path):
     import numpy as np
     import soundfile
 
-    from whisperaudit.engines.funasr import _duration
+    from whisper_audit.engines.funasr import _duration
     p = tmp_path / "f32.wav"
     soundfile.write(str(p), np.zeros(16000, dtype="float32"), 16000, subtype="FLOAT")
     d = _duration(str(p), [])
@@ -73,6 +73,6 @@ def test_duration_survives_float32_wav(tmp_path):
 
 
 def test_duration_falls_back_to_last_segment_end(tmp_path):
-    from whisperaudit.engines.funasr import _duration
+    from whisper_audit.engines.funasr import _duration
     d = _duration(str(tmp_path / "不存在.wav"), [{"end": 12.5}])
     assert d == 12.5

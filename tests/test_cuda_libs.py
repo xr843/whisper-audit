@@ -1,6 +1,6 @@
 """CUDA 运行时库定位。
 
-这条路径 2026-08-07 冷启动实测崩过：干净环境里 `pip install whisperaudit[whisper]`
+这条路径 2026-08-07 冷启动实测崩过：干净环境里 `pip install whisper-audit[whisper]`
 + CUDA 库、不装 torch，`nvidia.__file__` 是 None，原实现直接 TypeError，
 整个 run 在第一行就死。开发机因为装了 torch 一直没暴露。
 
@@ -12,7 +12,7 @@ import types
 
 import pytest
 
-from whisperaudit.audio import nvidia_lib_dirs
+from whisper_audit.audio import nvidia_lib_dirs
 
 
 @pytest.fixture
@@ -102,7 +102,7 @@ def test_short_interval_returns_nan(tmp_path):
 
     import numpy as np
 
-    from whisperaudit.audio import Loudness
+    from whisper_audit.audio import Loudness
 
     wav = tmp_path / "t.wav"
     with wave.open(str(wav), "wb") as w:
@@ -123,7 +123,7 @@ def test_dash_m_invocation_restarts_as_dash_m():
     """`-m` 启动必须以 `-m` 形式重启，否则整个进程「成功」退出而一事无成。
 
     2026-08-07 实测（清空 LD_LIBRARY_PATH 后）：
-        python3 -m whisperaudit.cli run 录音.wav  → 退出码 0，零输出，无产物
+        python3 -m whisper_audit.cli run 录音.wav  → 退出码 0，零输出，无产物
         python3 transcribe.py 录音.wav            → 正常报错
 
     根因：`-m` 下 sys.argv[0] 是 cli.py 的**文件路径**，
@@ -132,29 +132,29 @@ def test_dash_m_invocation_restarts_as_dash_m():
 
     这是本项目最忌讳的故障类型：**看起来像成功**。
     """
-    from whisperaudit.audio import restart_argv
+    from whisper_audit.audio import restart_argv
 
     mod = types.ModuleType("__main__")
-    mod.__spec__ = types.SimpleNamespace(name="whisperaudit.cli")
+    mod.__spec__ = types.SimpleNamespace(name="whisper_audit.cli")
 
-    got = restart_argv(mod, ["/path/to/whisperaudit/cli.py", "run", "a.wav"], "/usr/bin/python3")
-    assert got == ["/usr/bin/python3", "-m", "whisperaudit.cli", "run", "a.wav"]
+    got = restart_argv(mod, ["/path/to/whisper_audit/cli.py", "run", "a.wav"], "/usr/bin/python3")
+    assert got == ["/usr/bin/python3", "-m", "whisper_audit.cli", "run", "a.wav"]
 
 
 def test_script_invocation_restarts_as_script():
     """脚本启动（transcribe.py）与装包后的 console script：__spec__ 为 None，走原路径。"""
-    from whisperaudit.audio import restart_argv
+    from whisper_audit.audio import restart_argv
 
     mod = types.ModuleType("__main__")
     mod.__spec__ = None
 
-    got = restart_argv(mod, ["/usr/local/bin/whisperaudit", "run", "a.wav"], "/usr/bin/python3")
-    assert got == ["/usr/bin/python3", "/usr/local/bin/whisperaudit", "run", "a.wav"]
+    got = restart_argv(mod, ["/usr/local/bin/whisper-audit", "run", "a.wav"], "/usr/bin/python3")
+    assert got == ["/usr/bin/python3", "/usr/local/bin/whisper-audit", "run", "a.wav"]
 
 
 def test_module_without_spec_attribute_at_all():
     """有些嵌入式解释器的 __main__ 连 __spec__ 属性都没有——不能因此崩掉。"""
-    from whisperaudit.audio import restart_argv
+    from whisper_audit.audio import restart_argv
 
     mod = types.ModuleType("__main__")
     if hasattr(mod, "__spec__"):
@@ -170,7 +170,7 @@ def test_cli_module_is_runnable_as_a_script():
     """
     import pathlib
 
-    import whisperaudit.cli as c
+    import whisper_audit.cli as c
 
     src = pathlib.Path(c.__file__).read_text(encoding="utf-8")
     assert '__name__ == "__main__"' in src, "cli.py 缺 __main__ 守卫"

@@ -11,7 +11,7 @@ import json
 import urllib.error
 import urllib.request
 
-from whisperaudit.evaluate import pinyin_key
+from whisper_audit.evaluate import pinyin_key
 
 PROMPT = (
     "你在校对中文语音识别稿。只允许把同音错别字改成正确的字。\n"

@@ -5,7 +5,7 @@
 """
 from types import SimpleNamespace
 
-from whisperaudit.cli import run_polish
+from whisper_audit.cli import run_polish
 
 TERMS = {"terms": ["结余"], "fixes": []}
 
@@ -42,8 +42,8 @@ def test_dry_run_still_changes_nothing_even_if_pinyin_fix_is_on():
 
 def test_fallback_pinyin_fix_requires_explicit_opt_in(monkeypatch):
     """没开 --pinyin-fix 时，兜底不该跑——没有可覆盖的对象。"""
-    monkeypatch.setenv("WHISPERAUDIT_LLM_KEY", "x")
-    monkeypatch.setattr("whisperaudit.polish.polish",
+    monkeypatch.setenv("WHISPER_AUDIT_LLM_KEY", "x")
+    monkeypatch.setattr("whisper_audit.polish.polish",
                         lambda text, **kw: (text, dict(chunks=1, accepted=0, rejected=0,
                                                        length_rejected=0, failed=0)))
     rows = rows_of("本年度节余资金五万元")
@@ -54,8 +54,8 @@ def test_fallback_pinyin_fix_requires_explicit_opt_in(monkeypatch):
 
 def test_fallback_pinyin_fix_is_accounted_when_enabled(monkeypatch):
     """开了就跑，但每一处改动都必须带时间戳进账本。"""
-    monkeypatch.setenv("WHISPERAUDIT_LLM_KEY", "x")
-    monkeypatch.setattr("whisperaudit.polish.polish",
+    monkeypatch.setenv("WHISPER_AUDIT_LLM_KEY", "x")
+    monkeypatch.setattr("whisper_audit.polish.polish",
                         lambda text, **kw: (text, dict(chunks=1, accepted=0, rejected=0,
                                                        length_rejected=0, failed=0)))
     rows = rows_of("本年度节余资金五万元")
@@ -67,8 +67,8 @@ def test_fallback_pinyin_fix_is_accounted_when_enabled(monkeypatch):
 
 def test_structure_rejection_when_line_count_changes(monkeypatch):
     """LLM 把两行并成一行，长度可能恰好不变，constrain 看不出来——行数能。"""
-    monkeypatch.setenv("WHISPERAUDIT_LLM_KEY", "x")
-    monkeypatch.setattr("whisperaudit.polish.polish",
+    monkeypatch.setenv("WHISPER_AUDIT_LLM_KEY", "x")
+    monkeypatch.setattr("whisper_audit.polish.polish",
                         lambda text, **kw: (text.replace("\n", ""),
                                             dict(chunks=1, accepted=0, rejected=0,
                                                  length_rejected=0, failed=0)))

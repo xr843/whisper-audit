@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "whisperaudit"
+name = "whisper-audit"
 version = "0.3.0"
 description = "Chinese long-audio transcription with coverage auditing, targeted re-transcription, speaker diarization and a built-in CER harness"
 readme = { file = "README.md", content-type = "text/markdown" }
@@ -60,16 +60,16 @@ socks = ["socksio>=1.0"]
 dev = ["pytest>=8.0", "soundfile>=0.12"]   # soundfile：float32 WAV 测试夹具
 
 [project.urls]
-Homepage = "https://github.com/xr843/whisperaudit"
-Repository = "https://github.com/xr843/whisperaudit"
-"实测数据" = "https://github.com/xr843/whisperaudit/blob/master/docs/measurements.md"
-"踩坑记录" = "https://github.com/xr843/whisperaudit/blob/master/docs/lessons.md"
+Homepage = "https://github.com/xr843/whisper-audit"
+Repository = "https://github.com/xr843/whisper-audit"
+"实测数据" = "https://github.com/xr843/whisper_audit/blob/master/docs/measurements.md"
+"踩坑记录" = "https://github.com/xr843/whisper_audit/blob/master/docs/lessons.md"
 
 [project.scripts]
-whisperaudit = "whisperaudit.cli:main"
+whisper-audit = "whisper_audit.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["whisperaudit*"]
+include = ["whisper_audit*"]
 
 [tool.pytest.ini_options]
 filterwarnings = [

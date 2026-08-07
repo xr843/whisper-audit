@@ -1,6 +1,6 @@
 # 踩过的坑——实测工程记录
 
-> 本文是 whisperaudit 的实测教训全集：21 条坑，每一条都来自真实录音上的
+> 本文是 whisper-audit 的实测教训全集：21 条坑，每一条都来自真实录音上的
 > 测量，不是照文档推理。各项数字的完整口径见 [measurements.md](measurements.md)。
 
 ## 为什么不是一行 API 调用
@@ -357,7 +357,7 @@ whisper 给真实的 `avg_logprob`，这段逻辑正常工作。
 **其一：按 README 装完，GPU 上必崩。**
 
 ```
-pip install whisperaudit[whisper]     ← README 当时写的
+pip install whisper-audit[whisper]     ← README 当时写的
 RuntimeError: Library libcublas.so.12 is not found or cannot be loaded
 ```
 
@@ -395,15 +395,15 @@ TypeError: expected str, bytes or os.PathLike object, not NoneType
 `ensure_cuda_libs()` 要在设好 `LD_LIBRARY_PATH` 后 `os.execv` 重启自己。
 原实现是 `os.execv(sys.executable, [sys.executable] + sys.argv)`。
 
-问题在 `sys.argv[0]`：`python -m whisperaudit.cli` 启动时它是
-**cli.py 的文件路径**，不是 `-m whisperaudit.cli`。于是重启后变成
+问题在 `sys.argv[0]`：`python -m whisper_audit.cli` 启动时它是
+**cli.py 的文件路径**，不是 `-m whisper_audit.cli`。于是重启后变成
 「以脚本方式运行 cli.py」——而 cli.py 当时没有 `if __name__ == "__main__"`，
 它定义完所有函数就正常结束。
 
 实测（清空 LD_LIBRARY_PATH 后）：
 
 ```
-python3 -m whisperaudit.cli run 录音.wav   → 退出码 0，零输出，无任何产物
+python3 -m whisper_audit.cli run 录音.wav   → 退出码 0，零输出，无任何产物
 python3 transcribe.py 录音.wav             → 正常报错
 ```
 
@@ -412,7 +412,7 @@ python3 transcribe.py 录音.wav             → 正常报错
 
 它是**怎么被发现的**同样值得记：不是靠读代码，也不是靠冷启动实测
 （装包用户走 console script，`__spec__` 为 None，压根不受影响），
-而是做流水线消融实验时脚本里用 `subprocess` 调 `python -m whisperaudit.cli`，
+而是做流水线消融实验时脚本里用 `subprocess` 调 `python -m whisper_audit.cli`，
 发现输出目录压根没建。没有那个实验，按 README 用 `python -m` 的人
 会一直拿到空结果而无从察觉。
 

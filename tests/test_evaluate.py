@@ -1,6 +1,6 @@
 import pytest
 
-from whisperaudit import evaluate as E
+from whisper_audit import evaluate as E
 
 
 def test_normalize_strips_punctuation_and_converts_traditional():

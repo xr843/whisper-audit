@@ -9,7 +9,7 @@ manifest 是每行一个 json 的 jsonl：
 """
 import json
 
-from whisperaudit.evaluate import score, strip_foreign_gloss
+from whisper_audit.evaluate import score, strip_foreign_gloss
 
 _SUM_KEYS = ("sub", "dele", "ins", "homo", "near", "n_ref", "n_hyp")
 

@@ -136,7 +136,7 @@ beam search 在困难音频上更容易搜到「整段无语音」的高概率�
 （9,689 字，去标点索引口径逐字验证通过）+ 人工校准的时间↔字位锚点（116 个）。
 
 评测窗口取**锚点对齐**的 15 分钟（t 1884→2785，字位 166→3064，参考 2,898 字），
-金标 TSV 一行三列直接由对照文本生成，`whisperaudit eval` 原样可用。
+金标 TSV 一行三列直接由对照文本生成，`whisper-audit eval` 原样可用。
 
 **域警告**：这是集体慢速歌唱，1.5~2.7 字/秒拖腔带和声——与流水线的目标场景
 （讲座/会议）差得很远。下面所有数字只代表慢速歌唱域，不能外推。
@@ -519,7 +519,7 @@ cam++ 声纹（192 维）+ 余弦距离凝聚聚类，与 ASR 引擎完全解耦
 
 | 脚本 | 词级时间戳关 | 词级时间戳开 | 代价 |
 |---|---|---|---|
-| `whisperaudit/bench/throughput.py`（每轮重建模型） | 24.97x | 24.53x | −1.8% |
+| `whisper_audit/bench/throughput.py`（每轮重建模型） | 24.97x | 24.53x | −1.8% |
 | 早期脚本（复用模型实例） | 25.10x | 23.70x | −6% |
 
 **基线取 24.5x，门禁下限 23.3x**（−5%）。
@@ -558,8 +558,8 @@ cam++ 声纹（192 维）+ 余弦距离凝聚聚类，与 ASR 引擎完全解耦
 音频仍在的中文录音，10~15 分钟即可：
 
 ```bash
-whisperaudit run 录音.mp3 -o out --profile meeting
-whisperaudit goldset out --from 00:05:00 --to 00:20:00 -o sample.gold.tsv
+whisper-audit run 录音.mp3 -o out --profile meeting
+whisper-audit goldset out --from 00:05:00 --to 00:20:00 -o sample.gold.tsv
 # 打开 sample.gold.tsv 只改第三列的错字
-whisperaudit eval --gold sample.gold.tsv --hyp out
+whisper-audit eval --gold sample.gold.tsv --hyp out
 ```
