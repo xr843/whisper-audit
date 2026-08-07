@@ -463,3 +463,10 @@ def cmd_run(args):
     log(f"  {outdir}/{title}_字幕.srt")
     log(f"  {outdir}/质检报告.json")
     return 0
+
+
+# 兜底：让 `python -m whisperaudit.cli` 与 `python .../cli.py` 都能真正干活。
+# 没有这一段时，一旦重启路径退化成脚本形式，整个进程会「成功」退出而一事无成
+# （见 audio.restart_argv 的注释）。
+if __name__ == "__main__":
+    sys.exit(main())

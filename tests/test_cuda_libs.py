@@ -115,3 +115,62 @@ def test_short_interval_returns_nan(tmp_path):
         assert not math.isnan(loud.db(0.0, 0.5)), "500ms 区间必须给出真实音量"
     finally:
         loud.close()
+
+
+# ------------------------------------------------- 重启自己时的 argv（静默失败）
+
+def test_dash_m_invocation_restarts_as_dash_m():
+    """`-m` 启动必须以 `-m` 形式重启，否则整个进程「成功」退出而一事无成。
+
+    2026-08-07 实测（清空 LD_LIBRARY_PATH 后）：
+        python3 -m whisperaudit.cli run 录音.wav  → 退出码 0，零输出，无产物
+        python3 transcribe.py 录音.wav            → 正常报错
+
+    根因：`-m` 下 sys.argv[0] 是 cli.py 的**文件路径**，
+    `[executable] + argv` 把重启变成「以脚本方式跑 cli.py」，
+    而 cli.py 当时没有 `if __name__ == "__main__"`，定义完函数就正常退出。
+
+    这是本项目最忌讳的故障类型：**看起来像成功**。
+    """
+    from whisperaudit.audio import restart_argv
+
+    mod = types.ModuleType("__main__")
+    mod.__spec__ = types.SimpleNamespace(name="whisperaudit.cli")
+
+    got = restart_argv(mod, ["/path/to/whisperaudit/cli.py", "run", "a.wav"], "/usr/bin/python3")
+    assert got == ["/usr/bin/python3", "-m", "whisperaudit.cli", "run", "a.wav"]
+
+
+def test_script_invocation_restarts_as_script():
+    """脚本启动（transcribe.py）与装包后的 console script：__spec__ 为 None，走原路径。"""
+    from whisperaudit.audio import restart_argv
+
+    mod = types.ModuleType("__main__")
+    mod.__spec__ = None
+
+    got = restart_argv(mod, ["/usr/local/bin/whisperaudit", "run", "a.wav"], "/usr/bin/python3")
+    assert got == ["/usr/bin/python3", "/usr/local/bin/whisperaudit", "run", "a.wav"]
+
+
+def test_module_without_spec_attribute_at_all():
+    """有些嵌入式解释器的 __main__ 连 __spec__ 属性都没有——不能因此崩掉。"""
+    from whisperaudit.audio import restart_argv
+
+    mod = types.ModuleType("__main__")
+    if hasattr(mod, "__spec__"):
+        del mod.__spec__
+
+    assert restart_argv(mod, ["x.py", "run"], "/py") == ["/py", "x.py", "run"]
+
+
+def test_cli_module_is_runnable_as_a_script():
+    """兜底闸门：cli.py 必须有 __main__ 守卫。
+
+    没有它，任何把重启退化成脚本形式的路径都会静默变成 no-op。
+    """
+    import pathlib
+
+    import whisperaudit.cli as c
+
+    src = pathlib.Path(c.__file__).read_text(encoding="utf-8")
+    assert '__name__ == "__main__"' in src, "cli.py 缺 __main__ 守卫"

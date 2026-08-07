@@ -41,6 +41,36 @@ def nvidia_lib_dirs():
     return out
 
 
+def restart_argv(main_module=None, argv=None, executable=None):
+    """重启自己时该用的 argv。纯函数，可测。
+
+    **`-m` 启动必须保持 `-m` 形式重启。** `python -m whisperaudit.cli` 下
+    `sys.argv[0]` 是 `cli.py` 的文件路径，直接 `[executable] + argv` 会把重启
+    变成「以脚本方式运行 cli.py」——而 `cli.py` 里没有 `if __name__ == "__main__"`，
+    于是它定义完所有函数就**正常退出，退出码 0、零输出、一件事没做**。
+
+    2026-08-07 实测（清空 LD_LIBRARY_PATH 后）：
+        python3 -m whisperaudit.cli run 录音.wav   → 退出码 0，无输出，无产物
+        python3 transcribe.py 录音.wav             → 正常报错
+
+    这是本项目最忌讳的那类故障：看起来像成功。
+
+    判据用 `__main__.__spec__`——`-m` 启动时它不是 None 且 `.name` 就是模块名；
+    脚本启动（`transcribe.py`）和 console script（装包后的 `whisperaudit`）
+    都是 None，走原路径。
+    """
+    import sys as _sys
+    if main_module is None:
+        import __main__ as main_module
+    argv = list(_sys.argv if argv is None else argv)
+    executable = executable or _sys.executable
+    spec = getattr(main_module, "__spec__", None)
+    name = getattr(spec, "name", None)
+    if name:
+        return [executable, "-m", name] + argv[1:]
+    return [executable] + argv
+
+
 def ensure_cuda_libs():
     """CTranslate2 要在运行时找到 cuBLAS/cuDNN，它们是独立的 nvidia-*-cu12 pip 包。
     LD_LIBRARY_PATH 必须在进程启动前生效，所以这里设好后重启自己。
@@ -54,7 +84,7 @@ def ensure_cuda_libs():
     cur = os.environ.get("LD_LIBRARY_PATH", "")
     if want.split(":")[0] not in cur:
         os.environ["LD_LIBRARY_PATH"] = want + (":" + cur if cur else "")
-        os.execv(sys.executable, [sys.executable] + sys.argv)
+        os.execv(sys.executable, restart_argv())
 
 
 def prepare_audio(src, workdir):
