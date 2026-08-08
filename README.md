@@ -94,7 +94,7 @@ whisper-audit run 访谈.mp3 --engine funasr --diarize
 详见 `--help`。
 
 **引擎怎么选**：清晰普通话 → `funasr`；干净混合体裁**短**音频 → `qwen`；
-口音重 / 噪声大 / 拿不准 → 默认 whisper（六个域里唯一从不崩的，见上表）。
+口音重 / 噪声大 / **业余、远场录音** / 拿不准 → 默认 whisper（六个域里唯一从不崩的，见上表。实测连音量低、带混响的业余朗读都能让 funasr 崩到 35% CER，whisper 同音频 13%）。
 
 ### 输出
 

@@ -133,8 +133,10 @@ Other flags: `--terms glossary.json`, `--keep-break`, `--speakers N`,
 ### Choosing an engine
 
 Clear Mandarin → `funasr`. Clean mixed material, **short** files → `qwen`.
-Heavy accent / noise / not sure → the whisper default — the only engine that
-never collapsed across all six measured domains (table above).
+Heavy accent / noise / **amateur or far-field recordings** / not sure → the
+whisper default — the only engine that never collapsed across six measured
+domains. (A quiet, reverberant amateur reading pushed funasr to 35% CER while
+whisper held 13% on the same file.)
 
 ### Output
 
