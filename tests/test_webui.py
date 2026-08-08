@@ -96,3 +96,18 @@ def test_browser_cmd_wsl_uses_cmd_exe():
     cmd = browser_open_cmd("http://127.0.0.1:7860/", wsl=True)
     assert cmd[:3] == ["cmd.exe", "/c", "start"] and cmd[3] == ""
     assert browser_open_cmd("http://x/", wsl=False) is None
+
+
+def test_subprocess_env_pins_parent_package():
+    """UI 子进程必须跑与父进程同一份包——不赌安装状态、不赌启动目录。
+
+    真机事故：`whisper-audit ui` 在家目录启动 → 子进程 -m 找不到模块；
+    此前测试恰在仓库目录起服务，cwd 进了 sys.path，全绿假象。
+    """
+    from whisper_audit.webui import subprocess_env
+    env = subprocess_env({"PATH": "/bin", "PYTHONPATH": "/old"}, "/repo")
+    assert env["PYTHONPATH"].startswith("/repo")
+    assert "/old" in env["PYTHONPATH"]
+    assert env["PATH"] == "/bin"
+    env2 = subprocess_env({}, "/repo")
+    assert env2["PYTHONPATH"] == "/repo"

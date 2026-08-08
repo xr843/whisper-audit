@@ -32,6 +32,22 @@ PROFILES = [
 ]
 
 
+def subprocess_env(environ, pkg_parent):
+    """子进程环境：把**父进程正在用的这份包**的所在目录压进 PYTHONPATH。
+
+    2026-08-08 用户真机实测踩到：`whisper-audit ui` 在家目录启动，子进程
+    `python3 -m whisper_audit.cli` 直接 ModuleNotFoundError——这台机器的包
+    从未装进系统 python，全靠源码目录运行。而我此前的端到端测试碰巧在仓库
+    目录里起服务，`-m` 把 cwd 塞进 sys.path，子进程跟着沾光，测试全绿。
+
+    教训同 lessons 20/21 一族：**子进程必须跑与父进程同一份代码**，
+    不能赌「它装没装」「从哪儿启动」。纯函数，可测。"""
+    env = dict(environ)
+    env["PYTHONPATH"] = pkg_parent + (
+        os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+    return env
+
+
 def build_cmd(audio, outdir, engine="whisper", profile="lecture",
               terms=None, diarize=False, speakers=None):
     """拼子进程命令。纯函数，可测。"""
@@ -96,8 +112,10 @@ def transcribe_stream(audio, engine_label, profile_label, terms, diarize, speake
                     terms=terms or None, diarize=diarize, speakers=speakers)
 
     logs = []
+    pkg_parent = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                            text=True, bufsize=1)
+                            text=True, bufsize=1,
+                            env=subprocess_env(os.environ, pkg_parent))
     for line in proc.stdout:
         line = line.rstrip()
         # 进度条控制字符和框架噪声不进 UI
