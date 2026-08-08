@@ -1,11 +1,11 @@
 # WhisperAudit
 
-**[English](README.en.md) · [中文](README.md)**
+**[English](https://github.com/xr843/whisper-audit/blob/master/README.en.md) · [中文](https://github.com/xr843/whisper-audit/blob/master/README.md)**
 
 [![PyPI](https://img.shields.io/pypi/v/whisper-audit)](https://pypi.org/project/whisper-audit/)
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/xr843/whisper-audit/blob/master/examples/colab_demo.ipynb)
 [![CI](https://github.com/xr843/whisper-audit/actions/workflows/ci.yml/badge.svg)](https://github.com/xr843/whisper-audit/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/xr843/whisper-audit/blob/master/LICENSE)
 
 中文长音频转录流水线，输出文稿、字幕与质检报告。设计目标是**完整性**：
 不只转录一遍，还会审计转录结果本身——按实际音量定位「有语音、无文字」的
@@ -38,6 +38,8 @@
 | `--engine qwen` | 2.11 | 2.61 | **3.92** | 33.99 | 15.05 | 27.10 |
 | 默认 whisper | 4.18 | 8.67 | 4.45 | **24.63** | **11.86** | **14.78** |
 
+表中模型：whisper 为 faster-whisper large-v3，funasr 为
+SeacoParaformer large，qwen 为 Qwen3-ASR-0.6B。
 语料为 SpeechIO 五个测试集与 FLEURS（商用 API 在 SpeechIO 干净集的公开成绩约
 1.5~3%）。结论：干净普通话上 `funasr` 最准且删除错少 6~10 倍；困难语音上
 whisper 在全部三个域领先，另两个引擎各存在断崖式退化。**默认引擎因此选择
@@ -47,7 +49,7 @@ whisper 在全部三个域领先，另两个引擎各存在断崖式退化。**�
 （曾经的默认档）反而使 CER 升高 2.3 倍，默认档已因此改为单路；困难音频上
 双路将 CER 从 88.6% 降至 74.2%，`--profile meeting` 保留用于已确认存在漏转
 的场景。全部数据（包括对本项目不利的结果与被推翻的结论）见
-[docs/measurements.md](docs/measurements.md)。
+[docs/measurements.md](https://github.com/xr843/whisper-audit/blob/master/docs/measurements.md)。
 
 | 速度 | 实测值 |
 |---|---|
@@ -95,6 +97,7 @@ sudo apt install ffmpeg                     # macOS: brew install ffmpeg
 
 ```bash
 # 标准普通话（演讲 / 讲课 / 会议）：该域实测最准且最快
+#   引擎需对应 extra：pip install "whisper-audit[funasr]"
 whisper-audit run 录音.mp3 --engine funasr
 
 # 通用场景（默认配置）：单路转录 + 覆盖率审计 + 定点补转
@@ -109,13 +112,18 @@ whisper-audit run 录音.mp3 --profile fast
 # 多说话人：标注说话人（仅添加标签，不改动正文）
 whisper-audit run 访谈.mp3 --engine funasr --diarize
 
-# 本地网页界面（需 [ui] extra）：浏览器中上传音频、查看结果、下载产物
+# 本地网页界面：浏览器中上传音频、查看结果、下载产物
+#   安装：pip install "whisper-audit[whisper,ui]"
 whisper-audit ui
 ```
 
 网页界面默认仅绑定 `127.0.0.1`。以 `whisper-audit ui --listen 0.0.0.0` 启动时，
 局域网内其他设备可通过浏览器直接使用本机的转录服务（客户端无需安装任何组件）；
 此模式下音频将经局域网传输至运行服务的机器，请按环境的安全要求决定是否启用。
+
+![whisper-audit ui：左侧上传与进度，右侧质检摘要与正文预览](https://raw.githubusercontent.com/xr843/whisper-audit/master/docs/images/webui.jpg)
+
+（截图为真实运行：Colab demo 同款《阿Q正传》朗读，本次 26.1x 实时）
 
 源码方式运行：`python3 transcribe.py 录音.mp3`，与安装后的命令等价。
 其余参数（`--terms`、`--keep-break`、`--speakers`、`--model`、`--device`、
@@ -140,6 +148,17 @@ whisper-audit ui
 | `.work/` | 中间结果，重跑时自动复用（更改参数前应删除） |
 
 日志末尾的「终审」行报告最终成稿的实际覆盖率与残余可疑段数量。
+以 LibriVox 公有领域朗读《阿Q正传》第一章（7.8 分钟，与 Colab demo 同款
+音频）的一次真实运行为例：
+
+```
+审计：覆盖 95.7%　讲话中位音量 -27.2dB　待补 0 处（其中段内饥饿 0）　幻觉 0 处
+终审：合并稿覆盖 95.7%　有效语音 95.7%　残余饥饿段 0 处
+完成：6 段 / 1,646 字 / 64 条字幕
+```
+
+唯一未覆盖区段是末尾 5.1 秒——质检报告给出其精确区间，音量测量判定其中
+无语音，故不补转。
 
 ## 评测自己录音的准确率
 
@@ -179,7 +198,9 @@ whisper-audit eval --gold sample.gold.tsv --hyp 输出目录/
 
 启用后所有改动均记入质检报告（带时间戳，可回听核对），应逐条检查。
 `--polish` 配套 `--llm-base-url` / `--llm-model` / `--polish-dry-run`，
-API key 仅从环境变量 `WHISPER_AUDIT_LLM_KEY` 读取。
+API key 仅从环境变量 `WHISPER_AUDIT_LLM_KEY` 读取。其护栏强制每处替换
+与原文真同音、行数不变，内容无法被增删——但同音替换本身仍可能改变
+语义，故保持默认关闭。
 
 ## 已知局限
 
@@ -193,9 +214,9 @@ API key 仅从环境变量 `WHISPER_AUDIT_LLM_KEY` 读取。
 
 ## 文档
 
-- [docs/lessons.md](docs/lessons.md) —— 24 条实测工程记录：VAD 误删、静音幻觉、
+- [docs/lessons.md](https://github.com/xr843/whisper-audit/blob/master/docs/lessons.md) —— 24 条实测工程记录：VAD 误删、静音幻觉、
   段内漏转、合并陷阱、被污染的性能数据等，每条均来自真实测量
-- [docs/measurements.md](docs/measurements.md) —— 全部实测数字与每个默认值的
+- [docs/measurements.md](https://github.com/xr843/whisper-audit/blob/master/docs/measurements.md) —— 全部实测数字与每个默认值的
   判定依据，被推翻的结论原样保留
 - [Releases](https://github.com/xr843/whisper-audit/releases) —— 版本变更记录
 
@@ -210,7 +231,7 @@ python3 -m pytest tests/ -q   # 秒级完成，无需 GPU 与音频文件
 说话人分离测试使用保存为夹具的真实声纹向量。测试保护的是那类不抛异常的
 缺陷——静默丢失内容、静默改写文本、静默虚报覆盖率。
 
-开发环境、测试纪律与当前最需要的贡献方向见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+开发环境、测试纪律与当前最需要的贡献方向见 [CONTRIBUTING.md](https://github.com/xr843/whisper-audit/blob/master/CONTRIBUTING.md)。
 
 ```
 whisper_audit/
@@ -236,4 +257,4 @@ whisper_audit/
 
 ## 许可证
 
-[MIT](LICENSE)
+[MIT](https://github.com/xr843/whisper-audit/blob/master/LICENSE)
