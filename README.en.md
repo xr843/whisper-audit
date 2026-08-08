@@ -7,7 +7,7 @@
 [![CI](https://github.com/xr843/whisper-audit/actions/workflows/ci.yml/badge.svg)](https://github.com/xr843/whisper-audit/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**Try without installing**: hit the Colab badge above — a real recording, transcribed in your browser on a free T4 GPU in about 5 minutes.
+**Try without installing**: hit the Colab badge above — a real recording transcribed in your browser in ~5 minutes, measured at 30.8× realtime on the free T4.
 
 Long-form Chinese audio → transcript and subtitles. The goal is **leaving nothing
 out**, not "running it through once": the pipeline audits its own output for
@@ -20,61 +20,33 @@ audio never leaves your machine.
 
 ## Measured results (2026-08-07)
 
-Character Error Rate, lower is better:
+Six domains × three engines, one ruler (character error rate, lower is better).
+First three columns are clean domains, last three are hard:
 
-| Engine | Spontaneous speech<br>talk / lecture | Read speech<br>FLEURS | Deletions<br>(talk/lecture) |
-|---|---|---|---|
-| `--engine qwen` | 2.11% / 2.61% | **3.92%** | 76 / 132 |
-| `--engine funasr` | **2.06%** / **2.44%** | 5.36% | 79 / 130 |
-| default whisper large-v3 | 4.18% / 8.67% | 4.45% | 243 / 815 |
+| Engine | Talk | Lecture | Read | Accent+fast | Crosstalk | Livestream |
+|---|---|---|---|---|---|---|
+| `--engine funasr` | **2.06** | **2.44** | 5.36 | 24.88 | 32.76 | 25.69 |
+| `--engine qwen` | 2.11 | 2.61 | **3.92** | 33.99 | 15.05 | 27.10 |
+| default whisper | 4.18 | 8.67 | 4.45 | **24.63** | **11.86** | **14.78** |
 
-Spontaneous speech is SpeechIO ZH00004/ZH00005 — the public benchmark commercial
-Chinese ASR APIs are ranked on (commercial systems score roughly 1.5–3% on the
-same sets).
+Corpora: five SpeechIO sets + FLEURS (commercial APIs score ~1.5–3% on the clean
+SpeechIO sets). The pattern in one sentence: **on clean Mandarin `funasr` is the
+most accurate and drops 6–10× fewer characters; on hard audio whisper wins every
+domain while the other two each fall off a cliff — the default slot goes to the
+most predictable engine, not the best average.**
 
-Hard domains (Taiwanese-accented fast speech / crosstalk comedy with laughter
-and overlap / livestream selling with music; 500 clips each):
+**What does the pipeline itself buy?** Ablation on the same audio and reference:
+on clean Mandarin the audit + repatch buy **exactly nothing**, and the dual-pass
+merge (the old default) made CER 2.3× worse — the default is single-pass now.
+On hard audio the dual pass pulls 88.6% back to 74.2%, so `--profile meeting`
+stays as a **recovery option for audio you have confirmed is losing content**.
+The unflattering numbers are all in [docs/measurements.md](docs/measurements.md),
+overturned conclusions kept verbatim.
 
-| Engine | Accent+fast | Crosstalk | Livestream |
-|---|---|---|---|
-| default whisper | **24.63%** | **11.86%** | **14.78%** |
-| `--engine funasr` | 24.88% | 32.76% | 25.69% |
-| `--engine qwen` | 33.99% | 15.05% | 27.10% |
-
-**whisper wins every hard domain; funasr and qwen each fall off a cliff.**
-That is the entire case for whisper as the default — all six domains are in
-[docs/measurements.md](docs/measurements.md).
-
-The deletion column matters more than it looks. Deletions are content the engine
-silently dropped, and whisper drops **6–10× more** of it on spontaneous Chinese
-speech. That gap is the reason this project exists.
-
-**What do the audit and repatch actually buy you?** Ablation on one 73.8-minute
-file (SpeechIO ZH00004):
-
-| Configuration | Clean Mandarin | Hard audio (sustained singing) |
-|---|---|---|
-| Raw single pass | 4.15% | 88.6% |
-| Default (single pass + audit + repatch) | 4.15% | — |
-| `--profile meeting` (dual-pass merge) | **9.69%** | **74.2%** |
-
-**Both halves of that result are stated here.** On clean Mandarin the audit and
-repatch buy **exactly nothing**, and the dual-pass merge makes CER 2.3× worse —
-`combine()` picks the higher-character pass per 30s bucket and loses content at
-bucket boundaries ([lesson 22](docs/lessons.md)). On hard audio the dual-pass
-takes CER from 88.6% to 74.2%. That is where this machinery earns its keep.
-
-The default is therefore single-pass as of 2026-08-07; `meeting` remains as a
-**recovery option for audio you have confirmed is losing content**.
-
-| Also measured | |
+| Speed | Measured |
 |---|---|
-| Long-audio throughput | 24.5× realtime default, 62× with `--profile fast` (RTX 4060 Laptop 8GB) |
-| CPU-only throughput | 3.2× realtime (`--engine funasr --device cpu`) — an ordinary laptop is enough |
-
-Every number above is reproducible; methodology, scripts and the reasoning
-behind each default live in [docs/measurements.md](docs/measurements.md)
-(Chinese), including conclusions that were later overturned — kept verbatim.
+| Long audio (GPU) | 24.5× default / 62× `--profile fast` (RTX 4060 8GB); 30.8× on a free Colab T4 |
+| CPU-only | 3.2× (`--engine funasr --device cpu`) — an ordinary laptop is enough |
 
 ## What makes this different
 
@@ -137,8 +109,8 @@ non-autoregressive, so its CPU inference is far faster than whisper's.
 # Clear Mandarin (talks, lectures, meetings) — best quality and fast
 whisper-audit run recording.mp3 --engine funasr
 
-# Mixed material (some speaking, some reading aloud) — holds up in both
-whisper-audit run recording.mp3 --engine qwen
+# Clean mixed material, SHORT files — best on read speech; avoid for long audio (0.4–1.2× realtime)
+whisper-audit run short_clip.mp3 --engine qwen
 
 # Not sure — default: single pass + coverage audit + targeted repatch
 whisper-audit run recording.mp3
@@ -160,15 +132,9 @@ Other flags: `--terms glossary.json`, `--keep-break`, `--speakers N`,
 
 ### Choosing an engine
 
-Clear Mandarin → `funasr` (fastest and most accurate there). Clean mixed
-material, short files → `qwen` (measured at only 0.4–1.2× realtime on long
-audio — not for long recordings). Heavy accent, noise, unknown material → keep
-the whisper default.
-
-whisper is 2–4× worse on clean Mandarin, but it won all three measured hard
-domains while funasr and qwen each collapsed (32.76% / 33.99%). **The default
-slot belongs to the most predictable engine, not the one with the best
-average — a sentence now backed by numbers from six domains.**
+Clear Mandarin → `funasr`. Clean mixed material, **short** files → `qwen`.
+Heavy accent / noise / not sure → the whisper default — the only engine that
+never collapsed across all six measured domains (table above).
 
 ### Output
 
@@ -266,7 +232,7 @@ PRs welcome. Setup, testing discipline, and where help is most needed:
 
 ```bash
 pip install -e ".[dev]"        # pure-CPU core deps, no ASR backend
-python3 -m pytest tests/ -q    # 217 tests + 1 xfail, seconds, no GPU or audio needed
+python3 -m pytest tests/ -q    # 218 tests + 1 xfail, seconds, no GPU or audio needed
 ```
 
 The test suite deliberately runs without a GPU or any audio file: engine
