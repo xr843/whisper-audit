@@ -81,3 +81,18 @@ def test_supported_kwargs_filters_unknown():
 
     def fn(a, b=1): ...
     assert supported_kwargs(fn, a=1, b=2, nope=3) == {"a": 1, "b": 2}
+
+
+def test_wsl_detection():
+    from whisper_audit.webui import is_wsl
+    assert is_wsl("Linux version 6.6.87.2-microsoft-standard-WSL2 ...")
+    assert not is_wsl("Linux version 6.8.0-45-generic (buildd@lcy02) ...")
+
+
+def test_browser_cmd_wsl_uses_cmd_exe():
+    """WSL 里 xdg-open 连报十几行 not found（实测）——浏览器在 Windows 侧。
+    start 的空引号参数是窗口标题占位，防 URL 被当标题吃掉。"""
+    from whisper_audit.webui import browser_open_cmd
+    cmd = browser_open_cmd("http://127.0.0.1:7860/", wsl=True)
+    assert cmd[:3] == ["cmd.exe", "/c", "start"] and cmd[3] == ""
+    assert browser_open_cmd("http://x/", wsl=False) is None

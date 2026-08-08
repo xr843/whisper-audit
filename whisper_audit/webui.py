@@ -151,6 +151,25 @@ def supported_kwargs(fn, **kw):
     return {k: v for k, v in kw.items() if k in names}
 
 
+def is_wsl(version_text=None):
+    """WSL 判定。纯函数：/proc/version 里含 microsoft。"""
+    if version_text is None:
+        try:
+            version_text = open("/proc/version").read()
+        except OSError:
+            return False
+    return "microsoft" in version_text.lower()
+
+
+def browser_open_cmd(url, wsl):
+    """打开浏览器的命令。WSL 里 Linux 侧没有浏览器，xdg-open 会连报十几行
+    "not found"（实测）——用户的浏览器在 Windows 侧，正确做法是 cmd.exe start。
+    `start` 的第一个引号参数是窗口标题位，空着占位，防止 URL 被当成标题吃掉。"""
+    if wsl:
+        return ["cmd.exe", "/c", "start", "", url]
+    return None          # 非 WSL 交给 gradio 自己的 inbrowser
+
+
 def launch(port=7860, server_name="127.0.0.1"):
     exempt_localhost_from_proxy(os.environ)
     # 与「音频不出本机」同一立场：本地工具不发遥测
@@ -187,6 +206,22 @@ def launch(port=7860, server_name="127.0.0.1"):
         btn.click(transcribe_stream,
                   inputs=[audio, engine, profile, terms, diarize, speakers],
                   outputs=[log, body, files, srt, summary])
+    wsl = is_wsl()
+    if wsl:
+        import subprocess
+        import threading
+
+        def _open():
+            import time
+            time.sleep(2.0)
+            cmd = browser_open_cmd(f"http://{server_name}:{port}/", True)
+            try:
+                # cwd=/mnt/c：cmd.exe 在 WSL 路径下启动会刷 UNC 警告
+                subprocess.run(cmd, cwd="/mnt/c", stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL, timeout=10)
+            except Exception:
+                pass         # 打不开就打不开，地址已经打印在终端里
+        threading.Thread(target=_open, daemon=True).start()
     app.launch(share=False, **supported_kwargs(
         app.launch, server_name=server_name, server_port=port,
-        inbrowser=True, quiet=True))
+        inbrowser=not wsl, quiet=True))
