@@ -124,6 +124,14 @@ def add_run_args(ap):
     return ap
 
 
+def add_ui_args(ap):
+    ap.add_argument("--port", type=int, default=7860)
+    ap.add_argument("--listen", default="127.0.0.1",
+                    help="默认只绑本机。改成 0.0.0.0 会让局域网都能访问——"
+                         "音频会经过网络，想清楚再开")
+    return ap
+
+
 def add_goldset_args(ap):
     ap.add_argument("outdir", help="跑完的输出目录")
     ap.add_argument("--from", dest="start", default=None,
@@ -151,11 +159,12 @@ def add_eval_args(ap):
 
 
 # 已实现的子命令。加新子命令时必须同步这里，否则它会被当成音频文件名。
-SUBCOMMANDS = ("run", "goldset", "eval")
+SUBCOMMANDS = ("run", "goldset", "eval", "ui")
 
-_BUILDERS = {"run": add_run_args, "goldset": add_goldset_args, "eval": add_eval_args}
+_BUILDERS = {"run": add_run_args, "goldset": add_goldset_args,
+             "eval": add_eval_args, "ui": add_ui_args}
 _HELP = {"run": "转录音频", "goldset": "从输出里切一段生成待校对稿",
-         "eval": "拿校对好的金标算 CER"}
+         "eval": "拿校对好的金标算 CER", "ui": "启动本地网页界面（给不用终端的人）"}
 
 
 def main(argv=None):
@@ -182,7 +191,21 @@ def main(argv=None):
         ap.print_help()
         return 1
     args = ap.parse_args(argv)
-    return {"run": cmd_run, "goldset": cmd_goldset, "eval": cmd_eval}[args.cmd](args)
+    return {"run": cmd_run, "goldset": cmd_goldset, "eval": cmd_eval,
+            "ui": cmd_ui}[args.cmd](args)
+
+
+def cmd_ui(args):
+    """网页壳。注意这里**不调 ensure_cuda_libs**——转录在子进程里自理，
+    UI 进程若 execv 重启会把 gradio 服务杀掉。"""
+    try:
+        from .webui import launch
+    except ImportError:
+        log("网页界面需要 gradio：pip install \"whisper-audit[ui]\"")
+        return 2
+    log(f"本地网页 http://{args.listen}:{args.port} （Ctrl+C 退出）")
+    launch(port=args.port, server_name=args.listen)
+    return 0
 
 
 def cmd_goldset(args):

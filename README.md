@@ -85,7 +85,13 @@ whisper-audit run 录音.mp3 --profile fast
 
 # 多人对话 —— 标注说话人（只加标签，不改一个字；三个引擎都能配）
 whisper-audit run 访谈.mp3 --engine funasr --diarize
+
+# 图形界面 —— 给不用终端的人：浏览器里拖音频进来
+whisper-audit ui          # 需 pip install "whisper-audit[ui]"；只绑本机，音频不出电脑
 ```
+
+`whisper-audit ui --listen 0.0.0.0` 可让局域网同事直接用浏览器访问你这台机器转录
+（他们什么都不用装）——但音频会经过内网传到你机器，想清楚再开。
 
 `python3 transcribe.py 录音.mp3` 与装包后的命令等价。
 无显卡：`--engine funasr --device cpu`（3.2x 实时）。

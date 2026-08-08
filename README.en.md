@@ -123,7 +123,14 @@ whisper-audit run recording.mp3 --profile fast
 
 # Multi-speaker — label speakers (labels only; never edits a character of text)
 whisper-audit run interview.mp3 --engine funasr --diarize
+
+# Web UI — for people who don't use terminals: drag audio into the browser
+whisper-audit ui          # needs pip install "whisper-audit[ui]"; binds localhost only
 ```
+
+`whisper-audit ui --listen 0.0.0.0` lets colleagues on your LAN use your machine
+from their own browser with nothing installed — audio then crosses your network,
+so decide deliberately.
 
 `python3 transcribe.py recording.mp3` is equivalent to the installed command.
 

@@ -57,6 +57,10 @@ qwen = ["qwen-asr>=0.0.6"]
 # socks：huggingface_hub 换 httpx 后，走 SOCKS 代理下载模型必须额外装 socksio，
 # 否则报 "Using SOCKS proxy, but the 'socksio' package is not installed"。
 socks = ["socksio>=1.0"]
+# 本地网页界面（whisper-audit ui）。gradio 较重，故独立成 extra
+# socksio：SOCKS 代理环境（国内常态）下 httpx 会预初始化代理传输，缺它直接
+# ImportError——UI 连本地自检都过不去。实测踩到，与 [socks] extra 同根因。
+ui = ["gradio>=4", "socksio>=1.0"]
 dev = ["pytest>=8.0", "soundfile>=0.12"]   # soundfile：float32 WAV 测试夹具
 
 [project.urls]
