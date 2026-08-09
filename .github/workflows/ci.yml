@@ -14,3 +14,21 @@ jobs:
       # 把 ASR 后端加进来只会让 CI 装不动，且并不会多测到任何东西。
       - run: pip install -e ".[dev]"
       - run: python -m pytest tests/ -q
+
+  # UI 构建冒烟：gradio 5/6 双版本。开发机被 qwen-asr→transformers→hub
+  # 三方死锁钉在 5.x（见 pyproject [ui] 注释），而干净安装的用户拿到的是 6——
+  # 这个 job 是 6.x 路径唯一的常态化测试。只测构建（test_webui 里的
+  # build_app 测试），不起服务：版本破坏集中在构建期。
+  ui-smoke:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        gradio: ["gradio>=4,<6", "gradio>=6"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[ui,dev]" "${{ matrix.gradio }}"
+      - run: python -m pytest tests/test_webui.py -q

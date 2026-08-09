@@ -1,7 +1,35 @@
-"""网页壳的纯函数部分。gradio 不在依赖里，故绝不在模块顶层 import 它。"""
+"""网页壳测试。gradio 不在核心依赖里，故绝不在模块顶层 import 它——
+纯函数部分无 gradio 也全跑；构建期测试用 importorskip，只在装了 gradio
+的环境（本机 5.x / CI ui-smoke 双版本矩阵）里生效。"""
+import argparse
 import json
+import sys
+
+import pytest
 
 from whisper_audit.webui import build_cmd, collect_outputs, qa_summary
+
+
+def test_build_app_constructs_under_installed_gradio():
+    """Blocks 构建期是 gradio 版本破坏的主现场——6.x 删组件参数就在这一步炸。
+    构建与启动分离后，CI 才能在 gradio 5/6 下各构建一次而不真起服务。"""
+    gr = pytest.importorskip("gradio")
+    from whisper_audit.webui import build_app
+    app = build_app()
+    assert isinstance(app, gr.Blocks)
+
+
+def test_cmd_ui_without_gradio_prints_hint_not_traceback(monkeypatch, capsys):
+    """无 gradio 时要打安装提示退出，不是裸 traceback。
+
+    原实现的 try 只包住 `from .webui import launch`——而 webui 顶层从不
+    import gradio（刻意懒加载），真正的 ImportError 发生在 launch() 调用里、
+    落在 try 外面，友好提示是死代码。"""
+    monkeypatch.setitem(sys.modules, "gradio", None)
+    from whisper_audit import cli
+    rc = cli.cmd_ui(argparse.Namespace(listen="127.0.0.1", port=7860))
+    assert rc == 2
+    assert "whisper-audit[ui]" in capsys.readouterr().out
 
 
 def test_build_cmd_uses_dash_m_form():

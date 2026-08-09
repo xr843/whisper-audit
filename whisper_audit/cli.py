@@ -198,11 +198,16 @@ def main(argv=None):
 def cmd_ui(args):
     """网页壳。注意这里**不调 ensure_cuda_libs**——转录在子进程里自理，
     UI 进程若 execv 重启会把 gradio 服务杀掉。"""
+    # 显式探测 gradio，而不是把 try 包在 import webui 上：webui 顶层刻意
+    # 不 import gradio（懒加载），缺依赖的 ImportError 发生在 launch() 里；
+    # 而 launch 里还有别的 ImportError（如 SOCKS 环境缺 socksio），
+    # 不能一律说成「缺 gradio」。
     try:
-        from .webui import launch
+        import gradio  # noqa: F401
     except ImportError:
         log("网页界面需要 gradio：pip install \"whisper-audit[ui]\"")
         return 2
+    from .webui import launch
     log(f"本地网页 http://{args.listen}:{args.port} （Ctrl+C 退出）")
     launch(port=args.port, server_name=args.listen)
     return 0

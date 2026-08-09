@@ -188,8 +188,10 @@ def browser_open_cmd(url, wsl):
     return None          # 非 WSL 交给 gradio 自己的 inbrowser
 
 
-def launch(port=7860, server_name="127.0.0.1"):
-    exempt_localhost_from_proxy(os.environ)
+def build_app():
+    """构建 Blocks 界面，不起服务。与 launch 分离的原因：gradio 的版本
+    破坏集中在构建期（6.x 删组件参数就在这一步炸），拆开后 CI 能在 5/6
+    双版本下各构建一次验证——开发机被三方死锁钉在 5.x，测不到 6。"""
     # 与「音频不出本机」同一立场：本地工具不发遥测
     os.environ.setdefault("GRADIO_ANALYTICS_ENABLED", "False")
     import gradio as gr
@@ -224,6 +226,12 @@ def launch(port=7860, server_name="127.0.0.1"):
         btn.click(transcribe_stream,
                   inputs=[audio, engine, profile, terms, diarize, speakers],
                   outputs=[log, body, files, srt, summary])
+    return app
+
+
+def launch(port=7860, server_name="127.0.0.1"):
+    exempt_localhost_from_proxy(os.environ)
+    app = build_app()
     wsl = is_wsl()
     if wsl:
         import subprocess
