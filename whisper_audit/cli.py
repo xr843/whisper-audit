@@ -487,7 +487,9 @@ def cmd_run(args):
                if miss else ""))
 
     meta_lines = [
-        f"**转录方式**　{ENGINE_LABEL.get(args.engine) or "faster-whisper " + model_name}，{len(passes)} 路 + "
+        # f-string 表达式内不得复用外层引号——PEP 701 仅 3.12+ 合法，
+        # 这里曾让整个包在 3.10/3.11 上 import 即 SyntaxError（CI 矩阵首跑抓获）
+        f"**转录方式**　{ENGINE_LABEL.get(args.engine) or 'faster-whisper ' + model_name}，{len(passes)} 路 + "
         f"{len(rep['spans'])} 处定点补转，取并集。\n",
         f"**覆盖率**　本文档时间覆盖 {fin['cover_pct']:.1f}%，其中字数撑得起的有效语音约 "
         f"{fin['speech_pct']:.1f}%（按 {SPEECH_RATE:.0f} 字/秒估）；"
