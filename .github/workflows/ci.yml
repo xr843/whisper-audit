@@ -5,11 +5,17 @@ on: [push, pull_request]
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 最老（requires-python 下限）/ 开发机日常 / 当前最新。
+        # 只测 3.12 时，声明支持的 3.10 被新语法悄悄破坏不会有任何信号。
+        python: ["3.10", "3.12", "3.14"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python }}
       # 只装核心依赖 + dev。CI 没有 GPU，跑的是纯文本阶段与适配器纯函数；
       # 把 ASR 后端加进来只会让 CI 装不动，且并不会多测到任何东西。
       - run: pip install -e ".[dev]"
