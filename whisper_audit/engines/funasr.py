@@ -16,8 +16,8 @@
 """
 from . import Engine, register
 
-MODEL_DIR = ("~/.cache/modelscope/hub/models/iic/"
-             "speech_seaco_paraformer_large_asr_nat-zh-cn-16k-common-vocab8404-pytorch")
+MODEL_ID = ("iic/"
+            "speech_seaco_paraformer_large_asr_nat-zh-cn-16k-common-vocab8404-pytorch")
 
 # 整条喂给 Paraformer 的音频不能超过这个长度——注意力显存随长度**平方**增长。
 # 2026-08-07 实测（8GB 卡）：15 分钟能跑，34 分钟要 33GiB、48 分钟要 35GiB，
@@ -105,7 +105,9 @@ class FunASREngine(Engine):
 
     def __init__(self, model_dir=None, device="cuda", **_):
         import os
-        self.model_dir = os.path.expanduser(model_dir or MODEL_DIR)
+        # 显式给了目录就信它；默认目录推迟到首次转录时 ensure_model 解析——
+        # 构造必须离线零成本（get_engine 在 CI 里就会跑到这儿）。
+        self.model_dir = os.path.expanduser(model_dir) if model_dir else None
         self.device = device
         self._model = None
 
@@ -117,6 +119,10 @@ class FunASREngine(Engine):
 
         from funasr import AutoModel
         if self._model is None:
+            if self.model_dir is None:
+                from . import ensure_model
+                self.model_dir = ensure_model(MODEL_ID,
+                                              require=("model.pt", "seg_dict"))
             self._model = AutoModel(model=self.model_dir, device=self.device,
                                     disable_update=True)
 

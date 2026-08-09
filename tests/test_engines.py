@@ -48,3 +48,54 @@ def test_funasr_engine_is_lazily_importable():
     """funasr 引擎模块按需加载——get_engine 未见注册时先尝试延迟导入。"""
     e = get_engine("funasr")
     assert e.name == "funasr"
+
+
+def test_funasr_default_model_dir_is_resolved_lazily_via_ensure_model():
+    """构造零成本（不猜路径、不摸网络）；默认模型目录在首次转录时经
+    ensure_model 解析。此前构造期就把写死的缓存路径塞给 AutoModel。"""
+    import inspect
+
+    from whisper_audit.engines import funasr as F
+    e = get_engine("funasr")
+    assert e.model_dir is None
+    assert "ensure_model" in inspect.getsource(F.FunASREngine.transcribe)
+
+
+def test_ensure_model_returns_cached_dir_without_downloading(tmp_path, monkeypatch):
+    """目录已在且文件齐：直接返回，绝不触发下载——离线机器不能被逼联网。"""
+    from whisper_audit.engines import ensure_model
+    monkeypatch.setenv("HOME", str(tmp_path))
+    d = tmp_path / ".cache/modelscope/hub/models/iic/某模型"
+    d.mkdir(parents=True)
+    (d / "model.pt").write_text("x")
+
+    def boom(_):
+        raise AssertionError("目录齐全时不该下载")
+    assert ensure_model("iic/某模型", require=("model.pt",), _download=boom) == str(d)
+
+
+def test_ensure_model_downloads_when_missing(tmp_path, monkeypatch):
+    """目录不在：走 ModelScope 正式 API 下载并返回其落点。
+
+    0.4.1 及之前没有这层——不存在的路径被直接塞给 AutoModel，funasr 拿它
+    当 repo id 下载（Invalid repo_id）后 not registered 崩掉；除开发机外
+    的一切机器上 funasr 与 --diarize 都起不来（2026-08-09 新机器实测）。"""
+    from whisper_audit.engines import ensure_model
+    monkeypatch.setenv("HOME", str(tmp_path))
+    calls = []
+
+    def fake_dl(mid):
+        calls.append(mid)
+        return "/downloaded/here"
+    assert ensure_model("iic/新模型", _download=fake_dl) == "/downloaded/here"
+    assert calls == ["iic/新模型"]
+
+
+def test_ensure_model_redownloads_on_missing_required_file(tmp_path, monkeypatch):
+    """目录在但缺 require 文件（seaco 曾缺 seg_dict）：视同没装，重新下载。"""
+    from whisper_audit.engines import ensure_model
+    monkeypatch.setenv("HOME", str(tmp_path))
+    d = tmp_path / ".cache/modelscope/hub/models/iic/残缺模型"
+    d.mkdir(parents=True)
+    assert ensure_model("iic/残缺模型", require=("seg_dict",),
+                        _download=lambda mid: "/re/downloaded") == "/re/downloaded"

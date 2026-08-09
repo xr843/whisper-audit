@@ -349,3 +349,12 @@ def test_explicit_speaker_count_overrides_threshold_on_real_embeddings():
     E, _ = _real_embeddings()
     for n in (1, 2, 3):
         assert len(set(D.cluster_speakers(E, n_speakers=n))) == n
+
+
+def test_real_embed_fn_resolves_model_via_ensure_model():
+    """cam++ 与 seaco 同病：0.4.1 前目录写死、无下载逻辑，--diarize 只能在
+    开发机上跑。真机专用函数无法在 CI 实跑，按 test_out_json_none 先例锁源码。"""
+    import inspect
+
+    from whisper_audit import diarize as D
+    assert "ensure_model" in inspect.getsource(D._real_embed_fn)

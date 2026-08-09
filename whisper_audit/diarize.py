@@ -43,7 +43,7 @@ vocab471067-large`），而且该模型在 ModelScope 上缺 `jieba.c.dict`（40
 """
 import numpy as np
 
-MODEL_DIR = "~/.cache/modelscope/hub/models/iic/speech_campplus_sv_zh-cn_16k-common"
+MODEL_ID = "iic/speech_campplus_sv_zh-cn_16k-common"
 
 # 真机双向校准（见模块 docstring）：域内正常语音上，同人距离 P90=0.279、
 # 异人 P10=0.763，间隔 0.484；0.40~0.80 任意取值都能 24/24 全对。
@@ -129,10 +129,10 @@ def _real_embed_fn(clips, sr, device):
     1. `spk_embedding` 是 CUDA tensor，必须 `.detach().cpu().numpy()`；
     2. 整批 array 一次性传给 `generate()` 即可，不必逐条调用、不必写临时 wav。
     """
-    import os
-
     from funasr import AutoModel
-    model = AutoModel(model=os.path.expanduser(MODEL_DIR), device=device,
+
+    from .engines import ensure_model
+    model = AutoModel(model=ensure_model(MODEL_ID), device=device,
                       disable_update=True)
     r = model.generate(input=list(clips))
     out = []
