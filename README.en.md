@@ -75,7 +75,7 @@ unfavorable to this project and conclusions that were later overturned, is in
 |---|---|
 | Python | ≥ 3.10 |
 | ffmpeg | Required (audio transcoding); install via the system package manager |
-| OS | Linux and WSL2 tested; macOS expected to work (CPU path); native Windows untested |
+| OS | Linux, WSL2, and native Windows (CPU path) tested; macOS expected to work (CPU path) |
 | GPU | Optional. NVIDIA (tested with 8GB VRAM); a CPU-only path is available |
 | Disk | Roughly 1–3GB of models per engine, downloaded on first run |
 
@@ -92,7 +92,7 @@ Optional dependencies are grouped by engine and feature, and can be combined:
 |---|---|
 | `whisper` | faster-whisper engine (the default engine) |
 | `cuda` | CUDA 12 runtime libraries. Needed only for the whisper engine on GPU; environments that already have torch do not need it |
-| `funasr` | FunASR Paraformer engine |
+| `funasr` | FunASR Paraformer engine (includes torch/torchaudio — funasr 1.4+ no longer ships them) |
 | `qwen` | Qwen3-ASR engine. Note: its dependencies pin `transformers` to 4.57.6 (downgrading an existing install); a separate virtual environment is recommended |
 | `ui` | Local web interface |
 | `socks` | Required for model downloads behind a SOCKS proxy |
@@ -252,7 +252,7 @@ remains opt-in.
 
 ## Documentation
 
-- [docs/lessons.md](https://github.com/xr843/whisper-audit/blob/master/docs/lessons.md) — 24 field-tested engineering notes: VAD
+- [docs/lessons.md](https://github.com/xr843/whisper-audit/blob/master/docs/lessons.md) — 26 field-tested engineering notes: VAD
   deleting real speech, silence hallucinations, intra-segment drops, merge
   pitfalls, contaminated performance measurements — each from an actual
   measurement

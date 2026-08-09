@@ -62,7 +62,7 @@ whisper 在全部三个域领先，另两个引擎各存在断崖式退化。**�
 |---|---|
 | Python | ≥ 3.10 |
 | ffmpeg | 必需（音频转码），需通过系统包管理器安装 |
-| 操作系统 | Linux 与 WSL2 已实测；macOS 预期可用（CPU 路径）；Windows 原生未测试 |
+| 操作系统 | Linux、WSL2 与 Windows 原生（CPU 路径）已实测；macOS 预期可用（CPU 路径） |
 | GPU | 可选。NVIDIA GPU（8GB 显存已实测）；无 GPU 时可用 CPU 路径 |
 | 磁盘 | 每个引擎的模型约 1~3GB，首次运行自动下载 |
 
@@ -79,7 +79,7 @@ sudo apt install ffmpeg                     # macOS: brew install ffmpeg
 |---|---|
 | `whisper` | faster-whisper 引擎（默认引擎） |
 | `cuda` | CUDA 12 运行时库。仅 whisper 引擎的 GPU 用户需要；已安装 torch 的环境无需此项 |
-| `funasr` | FunASR Paraformer 引擎 |
+| `funasr` | FunASR Paraformer 引擎（含 torch/torchaudio——funasr 1.4 起不再自带） |
 | `qwen` | Qwen3-ASR 引擎。注意：其依赖将 `transformers` 锁定为 4.57.6（会降级已安装版本），建议独立虚拟环境 |
 | `ui` | 本地网页界面 |
 | `socks` | SOCKS 代理环境下载模型所需 |
@@ -214,7 +214,7 @@ API key 仅从环境变量 `WHISPER_AUDIT_LLM_KEY` 读取。其护栏强制每�
 
 ## 文档
 
-- [docs/lessons.md](https://github.com/xr843/whisper-audit/blob/master/docs/lessons.md) —— 24 条实测工程记录：VAD 误删、静音幻觉、
+- [docs/lessons.md](https://github.com/xr843/whisper-audit/blob/master/docs/lessons.md) —— 26 条实测工程记录：VAD 误删、静音幻觉、
   段内漏转、合并陷阱、被污染的性能数据等，每条均来自真实测量
 - [docs/measurements.md](https://github.com/xr843/whisper-audit/blob/master/docs/measurements.md) —— 全部实测数字与每个默认值的
   判定依据，被推翻的结论原样保留

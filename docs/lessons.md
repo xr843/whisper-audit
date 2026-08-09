@@ -1,6 +1,6 @@
 # 踩过的坑——实测工程记录
 
-> 本文是 whisper-audit 的实测教训全集：24 条坑，每一条都来自真实录音上的
+> 本文是 whisper-audit 的实测教训全集：26 条坑，每一条都来自真实录音上的
 > 测量，不是照文档推理。各项数字的完整口径见 [measurements.md](measurements.md)。
 
 ## 为什么不是一行 API 调用
@@ -528,3 +528,40 @@ whisper 的位置从「没测过所以保守」变成「六个域里唯一从不
 **中间隔着九次评测，没有捷径。**
 
 ---
+
+---
+
+### 25. ⚠️⚠️ 模型路径写死 + 没有下载逻辑——两个引擎只能在开发机上跑
+
+funasr 的别名解析是坏的（坑 19 一族），所以适配器直接把本地缓存目录传给
+AutoModel——但那个目录是 8-06 探测时**手工**装出来的，适配器里没有任何
+下载逻辑。结果：`--engine funasr` 与 `--diarize` 在开发机之外的一切机器上
+初始化即崩（funasr 拿不存在的路径当 repo id 去下载，Invalid repo_id 之后
+not registered），v0.3.0 起的每个发布版都如此。README 第一条用法示例和
+「纯 CPU 3.2x」的宣称，都指向一条只有一台机器能走的路。
+
+2026-08-09 原生 Windows 实测（第一台真正的新机器）当场抓获，Linux 假
+HOME 模拟随即复现。修复（v0.4.2）：`ensure_model()`——缓存齐全直接返回
+（离线机器绝不被逼联网），缺席则走 ModelScope 正式 API `snapshot_download`。
+两个附带实测结论：
+
+- 官方 API 快照**包含 seg_dict**——8-06 撞的 404 是 funasr 内部逐文件
+  拉取机制的问题，不是仓库缺文件，手工补 seg_dict 本来就不必要
+- Windows 上新版 modelscope 用 HF 风格快照布局（`models\iic--…\snapshots\`），
+  与 Linux 旧布局不同——**信任 snapshot_download 的返回值，别自己拼路径**
+
+「在我机器上能跑」的最隐蔽形态：不是代码依赖了本机，是**数据**依赖了本机。
+
+### 26. ⚠️ `pip install "whisper-audit[funasr]"` 装不出能跑的 funasr
+
+funasr 1.4.x 把 torch/torchaudio 从自己的依赖里挪走了，AutoModel 运行期
+才报「请自装 torch」。开发机 torch 早已在场（faster-whisper 的 CUDA 库
+就是它带进来的），所以 extra 只写 `funasr>=1.1.0` 的洞从未暴露。
+新机器上的失败链条：先撞无 torch，补上 torch 再撞坑 25。
+
+修复：extra 显式带上 `torch>=2` 与 `torchaudio`。顺带的兼容性收获：
+同一段音频，Linux/funasr 1.1.16 与 Windows/funasr 1.4.1 的转录输出
+**逐字一致**——适配器对 1.4 输出格式的假设成立，且跨平台确定。
+
+教训与坑 25 同构：**依赖声明也会「在我机器上能跑」**——上游悄悄改了
+依赖树，而你的开发机永远测不出来。
