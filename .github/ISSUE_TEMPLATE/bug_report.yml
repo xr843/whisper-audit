@@ -1,0 +1,51 @@
+name: Bug 报告
+description: 转录出错、结果异常、UI 起不来（English is welcome）
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        whisper-audit 完全离线、零遥测——你在这里贴的信息就是全部调试线索，请尽量给全。
+        ⚠️ 录音内容可能涉及隐私：**不要上传原始录音**。若需可复现样本，请用公开音频（如 README 演示用的 LibriVox 朗读）。
+  - type: input
+    id: command
+    attributes:
+      label: 运行的完整命令
+      placeholder: whisper-audit run 录音.mp3 --engine funasr
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: 终端输出
+      description: 至少包含「审计」与「终审」两行；若报错请给完整 traceback
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: qa
+    attributes:
+      label: 质检报告.json
+      description: 在输出目录里。涉及正文内容的字段（如幻觉清单里的文本）可自行删除
+      render: json
+  - type: textarea
+    id: env
+    attributes:
+      label: 环境
+      value: |
+        - whisper-audit 版本（pip show whisper-audit）：
+        - 系统：Linux / WSL2 / macOS / Windows 原生
+        - Python 版本：
+        - GPU 型号与显存，或纯 CPU：
+        - （仅 UI 问题）gradio 版本（pip show gradio）：
+    validations:
+      required: true
+  - type: textarea
+    id: audio
+    attributes:
+      label: 音频特征
+      value: |
+        - 时长：
+        - 体裁（讲课 / 会议 / 朗读 / 直播 …）：
+        - 语言与口音：
+        - 能否提供可复现问题的公开片段：
