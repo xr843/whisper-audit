@@ -51,7 +51,11 @@ whisper = ["faster-whisper>=1.1.0", "ctranslate2>=4.5,<5"]
 # cudnn 锁 9.x：CTranslate2 4.x 编译时链的就是 cuDNN 9，装 10 会找不到符号。
 cuda = ['nvidia-cublas-cu12; platform_system == "Linux"',
         'nvidia-cudnn-cu12>=9,<10; platform_system == "Linux"']
-funasr = ["funasr>=1.1.0"]
+# funasr 1.4.x 不再把 torch 带进自己的依赖（AutoModel 运行期才报缺）——
+# 干净机器上光装 funasr 起不来，torch/torchaudio 必须在这里显式给出
+# （2026-08-09 Windows 新机器实测抓获；开发机 torch 早已在场，从未暴露）。
+# 注意 Linux 的 PyPI torch 连带 CUDA 依赖约 3GB；Windows 为 CPU 构建。
+funasr = ["funasr>=1.1.0", "torch>=2", "torchaudio"]
 # ⚠ qwen-asr 把 transformers 钉成 ==4.57.6（精确等号），并硬依赖 gradio + flask。
 # 装它会**强制降级**环境里已有的 transformers。已实测降级后 whisper 与 funasr
 # 仍正常，但如果你的环境还有别的东西需要新版 transformers，请单独建 venv。
